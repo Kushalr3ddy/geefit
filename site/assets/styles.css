@@ -772,6 +772,61 @@ footer.site {
 .two-col { display: grid; grid-template-columns: 1.3fr 1fr; gap: 40px; align-items: start; }
 @media (max-width: 860px) { .two-col { grid-template-columns: 1fr; } }
 
+/* ---------- Media beside copy (home map, about portrait) ---------- */
+.split-media {
+  display: grid;
+  grid-template-columns: 1fr 1.05fr;
+  gap: 46px;
+  align-items: center;
+}
+.split-media .section-head { margin-bottom: 22px; }
+.split-media-body p:last-child { margin: 0; }
+@media (max-width: 880px) {
+  .split-media { grid-template-columns: 1fr; gap: 30px; }
+}
+
+.media-frame {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+  box-shadow: 0 24px 60px -34px rgba(0,0,0,0.9);
+}
+.media-frame img { width: 100%; height: auto; display: block; }
+
+.portrait-split {
+  display: grid;
+  grid-template-columns: 210px 1fr;
+  gap: 34px;
+  align-items: start;
+}
+@media (max-width: 680px) {
+  .portrait-split { grid-template-columns: 1fr; gap: 24px; }
+  .portrait { max-width: 210px; }
+}
+.portrait { margin: 0; }
+.portrait img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+}
+.portrait figcaption {
+  margin-top: 12px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.portrait figcaption span {
+  display: block;
+  margin-top: 3px;
+  font-weight: 400;
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+}
+
 /* ---------- Scroll reveal ---------- */
 .reveal {
   opacity: 0;

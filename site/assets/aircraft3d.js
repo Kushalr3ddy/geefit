@@ -98,9 +98,9 @@ function init(renderer) {
     return g;
   }
 
-  const NOSE_P = [[0.4, 50], [2.3, 47], [3.7, 43.5], [4.6, 38], [5.0, 31], [5.0, 14]];
+  const NOSE_P = [[0.32, 51], [1.5, 49.4], [2.7, 47], [3.8, 43.4], [4.5, 39], [4.86, 33], [5.0, 24], [5.0, 14]];
   const MID_P  = [[5.0, 14], [5.0, -14]];
-  const AFT_P  = [[5.0, -14], [4.9, -25], [4.3, -34], [3.0, -43], [1.3, -49], [0.5, -50]];
+  const AFT_P  = [[5.0, -14], [4.97, -23], [4.72, -31], [4.1, -38], [3.1, -44], [1.8, -48.5], [0.7, -51]];
   const FULL_P = NOSE_P.concat(MID_P.slice(1), AFT_P.slice(1));
 
   /* ------------------------------------------------------- part registry */
@@ -138,10 +138,20 @@ function init(renderer) {
     { pos: V(0, 0, 0), from: V(0, 12, -66), fromRot: E(-0.3, -0.25, 0), t0: 0.15, t1: 0.25 });
 
   /* wings */
-  const wingGeo = planform([[0, 16], [40, -6], [40, -14], [0, -14]], 1.5);
-  addPart(new THREE.Mesh(wingGeo, skinMat),
+  const wingGeo    = planform([[0, 16], [40, -6], [40, -14], [0, -14]], 1.5);
+  const wingletGeo = finPlate([[-4, 0], [3, 0], [0.5, 8], [-2.5, 8]], 1.0);
+  function wing() {
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(wingGeo, skinMat));
+    const wl = new THREE.Mesh(wingletGeo, skinMat);
+    wl.position.set(39.4, 0.5, -10);
+    wl.rotation.z = -0.2;
+    g.add(wl);
+    return g;
+  }
+  addPart(wing(),
     { pos: V(4.2, -2.2, -3), rot: E(0, 0, 0.085), from: V(60, -16, 0), fromRot: E(0, 0, 0.55), t0: 0.20, t1: 0.30 });
-  const wL = new THREE.Mesh(wingGeo, skinMat); wL.scale.x = -1;
+  const wL = wing(); wL.scale.x = -1;
   addPart(wL,
     { pos: V(-4.2, -2.2, -3), rot: E(0, 0, -0.085), from: V(-60, -16, 0), fromRot: E(0, 0, -0.55), t0: 0.22, t1: 0.32 });
 
@@ -229,12 +239,13 @@ function init(renderer) {
 
   new THREE.TextureLoader().load("assets/brand/geefit-mark-ondark.svg", tex => {
     tex.colorSpace = THREE.SRGBColorSpace;
-    const m = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, depthWrite: false });
+    const m = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0,
+      depthWrite: false, side: THREE.DoubleSide });
     fadeMats.push(m); liveryMats.push(m);
     for (const s of [1, -1]) {
       const pl = new THREE.Mesh(new THREE.PlaneGeometry(10, 8.1), m);
-      pl.position.set(s * 0.95, 15.5, -32.5);
-      pl.rotation.y = s > 0 ? 0 : Math.PI;
+      pl.position.set(s * 0.95, 15.5, -38);
+      pl.rotation.y = s > 0 ? Math.PI / 2 : -Math.PI / 2;
       livery.add(pl);
     }
     needsRender = true;
@@ -316,8 +327,8 @@ function init(renderer) {
   const bannerTex = new THREE.CanvasTexture(bc);
   bannerTex.colorSpace = THREE.SRGBColorSpace;
   const bannerMat = track(new THREE.MeshBasicMaterial({ map: bannerTex, transparent: true, opacity: 0 }));
-  const banner = new THREE.Mesh(new THREE.PlaneGeometry(170, 32), bannerMat);
-  banner.position.set(0, 24, -100);
+  const banner = new THREE.Mesh(new THREE.PlaneGeometry(170, 26), bannerMat);
+  banner.position.set(0, 40, -100);
   expo.add(banner);
 
   const postGeo = new THREE.CylinderGeometry(0.5, 0.5, 7, 8);
@@ -388,14 +399,24 @@ function init(renderer) {
 
   /* --------------------------------------------------------------- camera */
   const D2R = Math.PI / 180;
-  /* Portrait viewports see a much narrower slice, so the camera pulls back to keep
-     the span (and the backdrop) inside the frame instead of cropping them. */
-  let distScale = 1;
+  /* Camera distances are solved from the frustum rather than tuned by hand, so the
+     airframe stays fully framed at any viewport shape. HALF_* are the half-extents
+     that must fit: the yawed silhouette at the end, the plan view at the start. */
+  let   halfWEnd   = 63;
+  const HALF_H_END = 28;
+  let   yawEnd     = 0.42;
+  const HALF_W_TOP = 47, HALF_H_TOP = 54;
+  let endDist = 130, startDist = 190;
+  function fitDistance(halfW, halfH, aspect) {
+    const t = Math.tan((camera.fov * D2R) / 2);
+    return Math.max(halfH / t, halfW / (t * aspect)) * 1.06;
+  }
   function placeCamera(p) {
     const k = ease(clamp(p / 0.92));
     const polar = lerp(3 * D2R, 79 * D2R, k);     // plan view -> head-on
-    const azim  = lerp(34 * D2R, 2 * D2R, k);
-    const rad   = (lerp(182, 116, k) + Math.sin(p * Math.PI) * 12) * distScale;
+    const azim  = lerp(34 * D2R, 4 * D2R, k);
+    const rad   = lerp(startDist, endDist, k) + Math.sin(p * Math.PI) * endDist * 0.09;
+    camTarget.set(0, lerp(2, 12, k), 0);
     camera.position.set(
       rad * Math.sin(polar) * Math.sin(azim),
       rad * Math.cos(polar) + lerp(0, 10, k),
@@ -425,6 +446,8 @@ function init(renderer) {
     skinMat.opacity = solid;
     trimMat.opacity = solid;
     darkMat.opacity = solid;
+
+    aircraft.rotation.y = lerp(0, yawEnd, ease(seg(p, 0.62, 0.86)));
 
     const liv = ease(seg(p, 0.66, 0.77));
     livery.visible = liv > 0.001;
@@ -476,8 +499,16 @@ function init(renderer) {
     const aspect = w / h;
     camera.aspect = aspect;
     camera.fov = aspect < 1 ? 54 : 40;
-    distScale = Math.min(1.9, Math.max(1, 0.85 / aspect));
-    banner.scale.setScalar(aspect < 1 ? 0.85 : 1);
+    /* A narrow viewport can't afford a wide silhouette, so square the aircraft up
+       a little there and let it sit closer. */
+    yawEnd    = aspect < 1 ? 0.26 : 0.42;
+    halfWEnd  = aspect < 1 ? 57 : 63;
+    endDist   = Math.min(340, fitDistance(halfWEnd, HALF_H_END, aspect));
+    startDist = Math.min(430, fitDistance(HALF_W_TOP, HALF_H_TOP, aspect));
+    /* Size the backdrop to the frustum at its own depth so the wordmark never runs
+       off the edge. */
+    const visW = 2 * (endDist + 100) * Math.tan((camera.fov * D2R) / 2) * aspect;
+    banner.scale.setScalar(Math.min(1, (visW * 0.86) / 170));
     camera.updateProjectionMatrix();
     needsRender = true;
   }

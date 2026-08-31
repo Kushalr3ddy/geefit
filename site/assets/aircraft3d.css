@@ -37,6 +37,9 @@
   flex-direction: column;
   justify-content: space-between;
   padding: clamp(22px, 4vw, 54px);
+  /* The site header is sticky and sits above this pane, so the kicker needs to
+     clear it or it gets sliced in half while the section is pinned. */
+  padding-top: calc(clamp(22px, 4vw, 54px) + 78px);
 }
 
 .build3d-head { max-width: 42ch; transition: opacity .25s linear; }

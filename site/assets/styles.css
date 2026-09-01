@@ -245,18 +245,50 @@ nav.primary a[aria-current="page"]::after {
   padding: 96px 0 84px;
   overflow: hidden;
 }
-.hero .grid-art {
+/* Brand watermark. Lives inside the hero, which clips it, so it can never reach
+   the 3D build section or any content below. Present on every page. */
+.hero .grid-art,
+.page-hero .grid-art {
   position: absolute;
   top: -60px; right: -140px;
   width: 620px; height: 620px;
   background: url("brand/geefit-mark-ondark.svg") center/contain no-repeat;
   opacity: 0.055;
   pointer-events: none;
-  animation: drift 26s ease-in-out infinite alternate;
+  animation: wm-turn 150s linear infinite, wm-breathe 19s ease-in-out infinite;
 }
-@keyframes drift {
-  from { transform: translateY(-14px) rotate(-3deg); }
-  to   { transform: translateY(14px)  rotate(3deg); }
+/* A light travelling across the mark, masked to its own shape so the glow only
+   ever falls on the logo and not on the rectangle around it. */
+.hero .grid-art::after,
+.page-hero .grid-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg,
+    transparent 42%, rgba(255,225,205,0.85) 50%, transparent 58%);
+  background-size: 280% 280%;
+  -webkit-mask: url("brand/geefit-mark-ondark.svg") center/contain no-repeat;
+          mask: url("brand/geefit-mark-ondark.svg") center/contain no-repeat;
+  animation: wm-sheen 11s ease-in-out infinite;
+}
+@keyframes wm-turn {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes wm-breathe {
+  0%, 100% { opacity: 0.045; }
+  50%      { opacity: 0.085; }
+}
+@keyframes wm-sheen {
+  0%, 62%, 100% { background-position: 140% 0%; }
+  22%           { background-position: -40% 100%; }
+}
+
+/* Subpage heroes are shorter, so the mark is scaled back and clipped the same way. */
+.page-hero { overflow: hidden; }
+.page-hero .grid-art {
+  top: -170px; right: -160px;
+  width: 500px; height: 500px;
 }
 
 .hero .eyebrow, .page-hero .eyebrow {
@@ -836,6 +868,8 @@ footer.site {
 .reveal.in { opacity: 1; transform: none; }
 
 @media (prefers-reduced-motion: reduce) {
+  .hero .grid-art, .page-hero .grid-art,
+  .hero .grid-art::after, .page-hero .grid-art::after { animation: none; }
   html { scroll-behavior: auto; }
   *, *::before, *::after {
     animation-duration: .001ms !important;

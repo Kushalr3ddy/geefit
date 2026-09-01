@@ -4,6 +4,7 @@
    three.js r160 is vendored at assets/vendor/three/. */
 
 import * as THREE from "./vendor/three/three.module.min.js";
+import { GLTFLoader } from "./vendor/three/GLTFLoader.js";
 
 const section = document.getElementById("build3d");
 const canvas  = document.getElementById("build3dCanvas");
@@ -334,14 +335,24 @@ function init(renderer) {
   aircraft.add(livery);
   const liveryMats = [brandMat, cheatMat, glassMat];
 
-  const belly = lathe(FULL_P, -Math.PI * 0.30, Math.PI * 0.60, 40);
-  belly.scale(1.012, 1.012, 1.0);
-  livery.add(new THREE.Mesh(belly, brandMat));
-  for (const start of [-Math.PI * 0.42, Math.PI * 0.32]) {
-    const c = lathe(FULL_P, start, Math.PI * 0.10, 40);
-    c.scale(1.022, 1.022, 1.0);
-    livery.add(new THREE.Mesh(c, cheatMat));
+  /* Cheatlines. A partial lathe over the fuselage profile follows the body contour
+     exactly, so the stripe stays the same width as the section tapers — which is how
+     a real one is painted. phi 0 is the belly, 90deg the right flank, 270deg the left,
+     so a band is drawn once per side. Radius is nudged out to sit on the skin. */
+  const D = Math.PI / 180;
+  function cheatline(centreDeg, widthDeg, mat, lift) {
+    for (const c of [centreDeg, 360 - centreDeg]) {
+      const g = lathe(FULL_P, (c - widthDeg / 2) * D, widthDeg * D, 40);
+      g.scale(lift, lift, 1.0);
+      livery.add(new THREE.Mesh(g, mat));
+    }
   }
+  cheatline(96, 13, brandMat, 1.013);   // broad red stripe under the window line
+  cheatline(80, 4.5, cheatMat, 1.020);  // thin orange pinstripe below it
+  /* keep a dark belly so the underside doesn't read as bare white */
+  const belly = lathe(FULL_P, -Math.PI * 0.16, Math.PI * 0.32, 40);
+  belly.scale(1.010, 1.010, 1.0);
+  livery.add(new THREE.Mesh(belly, brandMat));
 
   const winMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.7, 0.9, 1.5), glassMat, 60);
   const dummy = new THREE.Object3D();
@@ -369,13 +380,198 @@ function init(renderer) {
       depthWrite: false, side: THREE.DoubleSide });
     fadeMats.push(m); liveryMats.push(m);
     for (const s of [1, -1]) {
-      const pl = new THREE.Mesh(new THREE.PlaneGeometry(10, 8.1), m);
-      pl.position.set(s * 0.95, 15.5, -38);
+      /* Box solved to stay inside the swept fin outline at every height it spans —
+         sized any larger and the leading edge of the mark hangs off into open air. */
+      const pl = new THREE.Mesh(new THREE.PlaneGeometry(12.8, 11), m);
+      pl.position.set(s * 1.39, 13, -39.5);
       pl.rotation.y = s > 0 ? Math.PI / 2 : -Math.PI / 2;
       livery.add(pl);
     }
     needsRender = true;
   });
+
+  /* ----------------------------------------------------- C919 airframe -----
+     The generated aircraft above stays in the scene as a fallback and is hidden
+     the moment the real model arrives, so a failed or slow fetch still renders
+     something. Model: C919 by iucc92 (CGTrader), FBX converted to glB. */
+  let usingModel = false;
+  const modelDecals = [];
+  const modelParts = [];
+  const modelGroup = new THREE.Group();
+  modelGroup.visible = false;
+  aircraft.add(modelGroup);
+
+  const hullMat = track(new THREE.MeshStandardMaterial({
+    color: 0xeef1f7, metalness: 0.22, roughness: 0.20,
+    transparent: true, opacity: 0, envMapIntensity: 1.15
+  }));
+  const hullDark = track(new THREE.MeshStandardMaterial({
+    color: 0x121821, metalness: 0.5, roughness: 0.35,
+    transparent: true, opacity: 0, envMapIntensity: 1.0
+  }));
+  /* Full triangle wireframe, same as the generated aircraft used — drawing only
+     the panel outlines (EdgesGeometry) left it looking too sparse. This reuses the
+     baked geometry rather than building a second one, so it costs no extra memory. */
+  const edgeMat = track(new THREE.MeshBasicMaterial({
+    color: 0xff5334, wireframe: true, transparent: true, opacity: 0, depthWrite: false
+  }));
+
+  /* Cheatlines are painted by height in the shader rather than with a texture:
+     the model's UVs are unknown, and a band in object space follows the real hull
+     exactly. Geometry is pre-baked into aircraft space so position.y is usable. */
+  const STRIPE = { value: 0 };
+  hullMat.onBeforeCompile = sh => {
+    sh.uniforms.uStripe = STRIPE;
+    sh.vertexShader = "varying vec3 vLocal;\n" + sh.vertexShader.replace(
+      "#include <begin_vertex>", "#include <begin_vertex>\n  vLocal = position;");
+    sh.fragmentShader = "varying vec3 vLocal;\nuniform float uStripe;\n" + sh.fragmentShader.replace(
+      "#include <color_fragment>",
+      `#include <color_fragment>
+       float onBody = 1.0 - smoothstep(6.5, 9.0, abs(vLocal.x));   // fuselage only
+       float red    = (1.0 - smoothstep(0.9, 1.3, abs(vLocal.y - 1.4))) * onBody;
+       float orange = (1.0 - smoothstep(0.3, 0.5, abs(vLocal.y + 0.4))) * onBody;
+       diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.847, 0.141, 0.102), red * uStripe);
+       diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.969, 0.584, 0.129), orange * uStripe);`);
+  };
+
+  new GLTFLoader().load("assets/models/c919.glb", gltf => {
+    const root = gltf.scene;
+    root.updateWorldMatrix(true, true);
+    const box = new THREE.Box3().setFromObject(root);
+    const size = box.getSize(new THREE.Vector3());
+    const ctr  = box.getCenter(new THREE.Vector3());
+    const k = 102 / size.z;                       // match the scene's fuselage length
+    const norm = new THREE.Matrix4()
+      .makeScale(k, k, k)
+      .multiply(new THREE.Matrix4().makeTranslation(-ctr.x, -ctr.y, -ctr.z));
+
+    /* Every mesh in this model is a component spanning both sides — the wings are a
+       single 99-unit mesh, the tailplanes a single 33-unit one. Anything that wide is
+       cut down the centreline so left and right can fly in separately. */
+    function splitByX(g) {
+      const src = g.index ? g.toNonIndexed() : g;
+      const pos = src.attributes.position, nrm = src.attributes.normal;
+      const keep = [[], []];
+      for (let t = 0; t < pos.count; t += 3) {
+        const cx = (pos.getX(t) + pos.getX(t + 1) + pos.getX(t + 2)) / 3;
+        keep[cx < 0 ? 0 : 1].push(t);
+      }
+      return keep.map(tris => {
+        if (!tris.length) return null;
+        const P = new Float32Array(tris.length * 9), N = nrm ? new Float32Array(tris.length * 9) : null;
+        tris.forEach((t, i) => {
+          for (let k = 0; k < 3; k++) {
+            P[i * 9 + k * 3]     = pos.getX(t + k);
+            P[i * 9 + k * 3 + 1] = pos.getY(t + k);
+            P[i * 9 + k * 3 + 2] = pos.getZ(t + k);
+            if (N) {
+              N[i * 9 + k * 3]     = nrm.getX(t + k);
+              N[i * 9 + k * 3 + 1] = nrm.getY(t + k);
+              N[i * 9 + k * 3 + 2] = nrm.getZ(t + k);
+            }
+          }
+        });
+        const out = new THREE.BufferGeometry();
+        out.setAttribute("position", new THREE.BufferAttribute(P, 3));
+        if (N) out.setAttribute("normal", new THREE.BufferAttribute(N, 3));
+        else out.computeVertexNormals();
+        return out;
+      });
+    }
+
+    /* Sort each piece into an assembly by where it sits and how big it is. */
+    function classify(b) {
+      const c = b.getCenter(new THREE.Vector3()), sz = b.getSize(new THREE.Vector3());
+      const side = c.x < 0 ? "L" : "R";
+      if (c.y > 8 && c.z < -25) return "fin";
+      if (c.z < -28) return "tail" + side;
+      if (Math.abs(c.x) > 10 && c.z > 3 && c.z < 26 && c.y < 1) return "engine" + side;
+      if (c.y < -4.2 && Math.abs(c.x) < 8) return "gear";
+      if (Math.abs(c.x) > 9 && sz.z < 40) return "wing" + side;
+      return "fuselage";
+    }
+
+    const groups = {};
+    function bin(name) {
+      if (!groups[name]) { groups[name] = new THREE.Group(); modelGroup.add(groups[name]); }
+      return groups[name];
+    }
+
+    const meshes = [];
+    root.updateWorldMatrix(true, true);
+    root.traverse(o => { if (o.isMesh) meshes.push(o); });
+    for (const m of meshes) {
+      const g0 = m.geometry.clone();
+      g0.applyMatrix4(new THREE.Matrix4().multiplyMatrices(norm, m.matrixWorld));
+      g0.deleteAttribute("uv");
+      g0.computeBoundingBox();
+      const src = Array.isArray(m.material) ? m.material[0] : m.material;
+      const dark = src && src.color && src.color.getHSL({}).l < 0.42;
+      /* 22, not 34: the engine fan faces span both nacelles in one 32-unit mesh,
+         and above that threshold they stayed whole and rode in with the fuselage. */
+      const wide = g0.boundingBox.max.x - g0.boundingBox.min.x > 22;
+      for (const g of (wide ? splitByX(g0) : [g0])) {
+        if (!g) continue;
+        g.computeBoundingBox();
+        const holder = bin(classify(g.boundingBox));
+        holder.add(new THREE.Mesh(g, dark ? hullDark : hullMat));
+        holder.add(new THREE.Mesh(g, edgeMat));
+      }
+    }
+
+    /* Entry vector and timing per assembly, mirroring the old build order. */
+    const CHOREO = {
+      fuselage: [V(0, -52, 0),   0.05, 0.15],
+      wingL:    [V(-64, -14, 0), 0.15, 0.25],
+      wingR:    [V(64, -14, 0),  0.17, 0.27],
+      fin:      [V(0, 56, -20),  0.25, 0.34],
+      tailL:    [V(-44, 8, -26), 0.27, 0.36],
+      tailR:    [V(44, 8, -26),  0.29, 0.38],
+      engineL:  [V(-18, -48, 6), 0.36, 0.45],
+      engineR:  [V(18, -48, 6),  0.38, 0.47],
+      gear:     [V(0, 20, 10),   0.45, 0.53]
+    };
+    for (const [name, grp] of Object.entries(groups)) {
+      const c = CHOREO[name] || [V(0, -40, 0), 0.05, 0.15];
+      modelParts.push({ g: grp, from: c[0], t0: c[1], t1: c[2] });
+    }
+    /* sit it on the floor */
+    const nb = new THREE.Box3().setFromObject(modelGroup);
+    modelGroup.position.y = FLOOR_Y - nb.min.y;
+
+    /* Find the fin by bounding what sits high and aft, then put the mark on its
+       flanks — measured rather than hand-placed, so it cannot float off the edge. */
+    const fin = new THREE.Box3();
+    modelGroup.traverse(o => {
+      if (!o.isMesh) return;
+      o.geometry.computeBoundingBox();
+      const b = o.geometry.boundingBox;
+      if (b.max.y > 14 && b.max.z < -18 && Math.abs(b.min.x + b.max.x) / 2 < 4) fin.union(b);
+    });
+    if (!fin.isEmpty()) {
+      const c = fin.getCenter(new THREE.Vector3()), fs = fin.getSize(new THREE.Vector3());
+      const h = Math.min(fs.y * 0.42, 11), w = h * 1.228;   // mark is 1000x814
+      new THREE.TextureLoader().load("assets/brand/geefit-mark-ondark.svg", tex => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        const dm = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0,
+          depthWrite: false, side: THREE.DoubleSide });
+        fadeMats.push(dm); modelDecals.push(dm);
+        for (const sgn of [1, -1]) {
+          const pl = new THREE.Mesh(new THREE.PlaneGeometry(w, h), dm);
+          pl.position.set(c.x + sgn * (fs.x / 2 + 0.25), c.y + fs.y * 0.06, c.z + fs.z * 0.04);
+          pl.rotation.y = sgn > 0 ? Math.PI / 2 : -Math.PI / 2;
+          (groups.fin || modelGroup).add(pl);   // ride with the fin as it flies in
+        }
+        needsRender = true;
+      });
+    }
+
+    for (const part of parts) part.g.visible = false;
+    livery.visible = false;
+    usingModel = true;
+    modelGroup.visible = true;
+    needsRender = true;
+  }, undefined, () => { /* keep the generated fallback */ });
 
   /* ------------------------------------------------------------ expo hall */
   const expo = new THREE.Group();
@@ -553,10 +749,28 @@ function init(renderer) {
 
   /* --------------------------------------------------------------- update */
   const tmp = new THREE.Vector3();
+  const ORIGIN = new THREE.Vector3();
   function update(p) {
     jig.material.opacity = seg(p, 0, 0.05) * (1 - seg(p, 0.62, 0.75)) * 0.8;
 
+    if (usingModel) {
+      /* The assemblies fly in as wireframe, the surface resolves once they have all
+         landed, then the livery paints on. */
+      for (const mp of modelParts) {
+        const t = easeOut(seg(p, mp.t0, mp.t1));
+        mp.g.visible = t > 0.001;
+        mp.g.position.copy(tmp.copy(mp.from).lerp(ORIGIN, t));
+      }
+      const solidM = ease(seg(p, 0.52, 0.68));
+      edgeMat.opacity = seg(p, 0.03, 0.10) * (1 - ease(seg(p, 0.54, 0.70))) * 0.85;
+      hullMat.opacity = solidM;
+      hullDark.opacity = solidM;
+      STRIPE.value = ease(seg(p, 0.66, 0.80));
+      for (const m of modelDecals) m.opacity = STRIPE.value;
+    }
+
     for (const part of parts) {
+      if (usingModel) break;
       const t = easeOut(seg(p, part.t0, part.t1));
       part.g.visible = t > 0.001;
       part.g.position.copy(tmp.copy(part.from).lerp(part.home, t));
@@ -567,8 +781,8 @@ function init(renderer) {
       );
     }
 
-    const solid = ease(seg(p, 0.50, 0.66));
-    wireMat.opacity = seg(p, 0.02, 0.10) * (1 - solid) * 0.9;
+    const solid = usingModel ? 1 : ease(seg(p, 0.50, 0.66));
+    wireMat.opacity = usingModel ? 0 : seg(p, 0.02, 0.10) * (1 - solid) * 0.9;
     skinMat.opacity = solid;
     trimMat.opacity = solid;
     darkMat.opacity = solid;
@@ -576,7 +790,7 @@ function init(renderer) {
     aircraft.rotation.y = lerp(0, yawEnd, ease(seg(p, 0.62, 0.86)));
 
     const liv = ease(seg(p, 0.66, 0.77));
-    livery.visible = liv > 0.001;
+    livery.visible = !usingModel && liv > 0.001;
     for (const m of liveryMats) m.opacity = liv;
 
     const hall = ease(seg(p, 0.74, 0.88));
@@ -627,8 +841,11 @@ function init(renderer) {
     camera.fov = aspect < 1 ? 54 : 40;
     /* A narrow viewport can't afford a wide silhouette, so square the aircraft up
        a little there and let it sit closer. */
-    yawEnd    = aspect < 1 ? 0.26 : 0.42;
-    halfWEnd  = aspect < 1 ? 57 : 63;
+    /* Open the stand angle enough that the fin — and the mark painted on it — is
+       actually readable; half-width tracks the yawed silhouette so the frustum fit
+       keeps the whole airframe in frame. Portrait stays squarer, it has less room. */
+    yawEnd    = aspect < 1 ? 0.30 : 0.62;
+    halfWEnd  = aspect < 1 ? 58 : 66;
     endDist   = Math.min(340, fitDistance(halfWEnd, HALF_H_END, aspect));
     startDist = Math.min(430, fitDistance(HALF_W_TOP, HALF_H_TOP, aspect));
     /* Size the backdrop to the frustum at its own depth so the wordmark never runs

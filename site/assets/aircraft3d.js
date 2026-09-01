@@ -485,7 +485,7 @@ function init(renderer) {
       const side = c.x < 0 ? "L" : "R";
       if (c.y > 8 && c.z < -25) return "fin";
       if (c.z < -28) return "tail" + side;
-      if (c.y < -2.6 && c.z > 2 && c.z < 26 && Math.abs(c.x) > 6) return "engine" + side;
+      if (Math.abs(c.x) > 10 && c.z > 3 && c.z < 26 && c.y < 1) return "engine" + side;
       if (c.y < -4.2 && Math.abs(c.x) < 8) return "gear";
       if (Math.abs(c.x) > 9 && sz.z < 40) return "wing" + side;
       return "fuselage";
@@ -507,7 +507,9 @@ function init(renderer) {
       g0.computeBoundingBox();
       const src = Array.isArray(m.material) ? m.material[0] : m.material;
       const dark = src && src.color && src.color.getHSL({}).l < 0.42;
-      const wide = g0.boundingBox.max.x - g0.boundingBox.min.x > 34;
+      /* 22, not 34: the engine fan faces span both nacelles in one 32-unit mesh,
+         and above that threshold they stayed whole and rode in with the fuselage. */
+      const wide = g0.boundingBox.max.x - g0.boundingBox.min.x > 22;
       for (const g of (wide ? splitByX(g0) : [g0])) {
         if (!g) continue;
         g.computeBoundingBox();

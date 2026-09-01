@@ -61,15 +61,46 @@ function init(renderer) {
   const wireMat = track(new THREE.MeshBasicMaterial({
     color: 0xff5334, wireframe: true, transparent: true, opacity: 0, depthWrite: false
   }));
-  const solidMat = (color, metal = 0.55, rough = 0.34) => track(new THREE.MeshStandardMaterial({
-    color, metalness: metal, roughness: rough, transparent: true, opacity: 0, side: THREE.DoubleSide
+  const solidMat = (color, metal, rough) => track(new THREE.MeshStandardMaterial({
+    color, metalness: metal, roughness: rough, transparent: true, opacity: 0,
+    side: THREE.DoubleSide, envMapIntensity: 1.15
   }));
-  const skinMat  = solidMat(0xe9edf5);
-  const trimMat  = solidMat(0x8a94a6, 0.7, 0.35);
-  const darkMat  = solidMat(0x11151d, 0.2, 0.7);
-  const brandMat = solidMat(0xd8241a, 0.35, 0.42);
-  const cheatMat = solidMat(0xf79521, 0.3, 0.5);
-  const glassMat = solidMat(0x0d1520, 0.9, 0.15);
+  /* Painted airframe reads as gloss over metal; bare parts get real metalness.
+     Both need something to reflect — see the generated environment below. */
+  const skinMat  = solidMat(0xeef1f7, 0.22, 0.20);
+  const trimMat  = solidMat(0x9aa3b4, 0.88, 0.30);
+  const darkMat  = solidMat(0x0f131a, 0.35, 0.55);
+  const brandMat = solidMat(0xd8241a, 0.18, 0.26);
+  const cheatMat = solidMat(0xf79521, 0.18, 0.30);
+  const glassMat = solidMat(0x0a121c, 0.55, 0.08);
+
+  /* An environment map, without which metalness renders as flat chalk. Generated
+     here rather than loaded, so nothing extra ships: a vertical sky/floor gradient
+     plus two soft lamps to give the panels a specular highlight to catch. */
+  (function buildEnvironment() {
+    const c = document.createElement("canvas");
+    c.width = 512; c.height = 256;
+    const x = c.getContext("2d");
+    const grad = x.createLinearGradient(0, 0, 0, 256);
+    grad.addColorStop(0.00, "#0b101c");
+    grad.addColorStop(0.38, "#7d93b6");
+    grad.addColorStop(0.50, "#cdd8ea");
+    grad.addColorStop(0.58, "#40485c");
+    grad.addColorStop(1.00, "#06070b");
+    x.fillStyle = grad; x.fillRect(0, 0, 512, 256);
+    for (const [cx, cy, r, col] of [[132, 74, 66, "rgba(255,255,255,0.95)"],
+                                    [372, 96, 52, "rgba(255,158,96,0.75)"]]) {
+      const rg = x.createRadialGradient(cx, cy, 0, cx, cy, r);
+      rg.addColorStop(0, col); rg.addColorStop(1, "rgba(0,0,0,0)");
+      x.fillStyle = rg; x.fillRect(cx - r, cy - r, r * 2, r * 2);
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromEquirectangular(tex).texture;
+    pmrem.dispose(); tex.dispose();
+  })();
 
   /* --------------------------------------------------------- geometry kit */
   function lathe(profile, phiStart, phiLength, segs = 44) {
@@ -85,17 +116,74 @@ function init(renderer) {
     for (let i = 1; i < pts.length; i++) s.lineTo(pts[i][0], pts[i][1]);
     return s;
   }
-  /* horizontal surface: span along X, chord along Z, thickness along Y */
-  function planform(pts, thick) {
-    const g = new THREE.ExtrudeGeometry(shapeOf(pts), { depth: thick, bevelEnabled: false, curveSegments: 2 });
-    g.rotateX(Math.PI / 2); g.translate(0, thick / 2, 0); g.computeVertexNormals();
+  /* Flying surfaces are lofted airfoil sections, not flat extrusions: a constant
+     -thickness plate with square edges is what makes a model read as foam. */
+  const NACA = t => x =>
+    5 * t * (0.2969 * Math.sqrt(x) - 0.1260 * x - 0.3516 * x * x
+             + 0.2843 * x * x * x - 0.1015 * x * x * x * x);
+  function airfoilSection(n) {
+    const half = NACA(1), pts = [];
+    for (let i = 0; i <= n; i++) {                 // upper surface, LE -> TE
+      const u = 0.5 - 0.5 * Math.cos((Math.PI * i) / n);
+      pts.push([u, half(u)]);
+    }
+    for (let i = n - 1; i >= 1; i--) {             // lower surface, TE -> LE
+      const u = 0.5 - 0.5 * Math.cos((Math.PI * i) / n);
+      pts.push([u, -half(u)]);
+    }
+    return pts;
+  }
+  const SECTION = airfoilSection(12);
+
+  /** Loft an airfoil along a run of stations.
+   *  station: { at, le, chord, thick }  — `at` is span (horizontal) or height (vertical). */
+  function loft(stations, vertical) {
+    const m = SECTION.length, n = stations.length;
+    const pos = [], idx = [];
+    const put = (st, u, t) => {
+      const th = t * st.chord * st.thick;
+      const z = st.le - u * st.chord;
+      if (vertical) pos.push(th, st.at, z);
+      else          pos.push(st.at, th, z);
+    };
+    for (const st of stations) for (const [u, t] of SECTION) put(st, u, t);
+    for (let sIdx = 0; sIdx < n - 1; sIdx++) {
+      for (let k = 0; k < m; k++) {
+        const a = sIdx * m + k, b = sIdx * m + ((k + 1) % m);
+        const c = (sIdx + 1) * m + k, d = (sIdx + 1) * m + ((k + 1) % m);
+        idx.push(a, c, b, b, c, d);
+      }
+    }
+    /* close the root and the tip so the surface is a solid, not a shell */
+    for (const [sIdx, flip] of [[0, false], [n - 1, true]]) {
+      const st = stations[sIdx];
+      const centre = pos.length / 3;
+      if (vertical) pos.push(0, st.at, st.le - 0.5 * st.chord);
+      else          pos.push(st.at, 0, st.le - 0.5 * st.chord);
+      for (let k = 0; k < m; k++) {
+        const a = sIdx * m + k, b = sIdx * m + ((k + 1) % m);
+        idx.push(centre, flip ? b : a, flip ? a : b);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
     return g;
   }
-  /* vertical surface: height along Y, chord along Z, thickness along X */
-  function finPlate(pts, thick) {
-    const g = new THREE.ExtrudeGeometry(shapeOf(pts), { depth: thick, bevelEnabled: false, curveSegments: 2 });
-    g.rotateY(-Math.PI / 2); g.translate(thick / 2, 0, 0); g.computeVertexNormals();
-    return g;
+  /** Straight-tapered surface between a root and a tip station. */
+  function surface(root, tip, steps = 8, vertical = false) {
+    const st = [];
+    for (let i = 0; i <= steps; i++) {
+      const f = i / steps;
+      st.push({
+        at:    lerp(root.at, tip.at, f),
+        le:    lerp(root.le, tip.le, f),
+        chord: lerp(root.chord, tip.chord, f),
+        thick: lerp(root.thick, tip.thick, f)
+      });
+    }
+    return loft(st, vertical);
   }
 
   const NOSE_P = [[0.32, 51], [1.5, 49.4], [2.7, 47], [3.8, 43.4], [4.5, 39], [4.86, 33], [5.0, 24], [5.0, 14]];
@@ -130,7 +218,14 @@ function init(renderer) {
   }
 
   /* fuselage barrels */
-  addPart(new THREE.Mesh(lathe(MID_P), skinMat),
+  const midBarrel = new THREE.Group();
+  midBarrel.add(new THREE.Mesh(lathe(MID_P), skinMat));
+  /* belly fairing: without it the wing just intersects the tube */
+  const fairing = new THREE.Mesh(new THREE.SphereGeometry(1, 26, 18), skinMat);
+  fairing.scale.set(7.4, 3.4, 21);
+  fairing.position.set(0, -3.4, -3);
+  midBarrel.add(fairing);
+  addPart(midBarrel,
     { pos: V(0, 0, 0), from: V(0, -48, 0), t0: 0.045, t1: 0.14 });
   addPart(new THREE.Mesh(lathe(NOSE_P), skinMat),
     { pos: V(0, 0, 0), from: V(0, 14, 66), fromRot: E(0.3, 0.25, 0), t0: 0.10, t1: 0.20 });
@@ -138,14 +233,18 @@ function init(renderer) {
     { pos: V(0, 0, 0), from: V(0, 12, -66), fromRot: E(-0.3, -0.25, 0), t0: 0.15, t1: 0.25 });
 
   /* wings */
-  const wingGeo    = planform([[0, 16], [40, -6], [40, -14], [0, -14]], 1.5);
-  const wingletGeo = finPlate([[-4, 0], [3, 0], [0.5, 8], [-2.5, 8]], 1.0);
+  const wingGeo = surface(
+    { at: 0,  le: 16, chord: 30, thick: 0.135 },
+    { at: 40, le: -6, chord: 8,  thick: 0.095 }, 10);
+  const wingletGeo = surface(
+    { at: 0, le: -6.5, chord: 7, thick: 0.11 },
+    { at: 8, le: -9.5, chord: 3, thick: 0.09 }, 5, true);
   function wing() {
     const g = new THREE.Group();
     g.add(new THREE.Mesh(wingGeo, skinMat));
     const wl = new THREE.Mesh(wingletGeo, skinMat);
-    wl.position.set(39.4, 0.5, -10);
-    wl.rotation.z = -0.2;
+    wl.position.set(39.6, 0, 0);
+    wl.rotation.z = -0.16;
     g.add(wl);
     return g;
   }
@@ -156,9 +255,14 @@ function init(renderer) {
     { pos: V(-4.2, -2.2, -3), rot: E(0, 0, -0.085), from: V(-60, -16, 0), fromRot: E(0, 0, -0.55), t0: 0.22, t1: 0.32 });
 
   /* empennage */
-  addPart(new THREE.Mesh(finPlate([[-18, 0], [6, 0], [-8, 24], [-16, 24]], 1.3), skinMat),
+  const finGeo = surface(
+    { at: 0,  le: 6,  chord: 24, thick: 0.12 },
+    { at: 24, le: -8, chord: 8,  thick: 0.09 }, 8, true);
+  addPart(new THREE.Mesh(finGeo, skinMat),
     { pos: V(0, 4.4, -30), from: V(0, 56, -18), t0: 0.28, t1: 0.38 });
-  const hstGeo = planform([[0, 8], [17, -2], [17, -7], [0, -8]], 1.1);
+  const hstGeo = surface(
+    { at: 0,  le: 8,  chord: 16, thick: 0.11 },
+    { at: 17, le: -2, chord: 5,  thick: 0.09 }, 6);
   addPart(new THREE.Mesh(hstGeo, skinMat),
     { pos: V(2.4, 1.2, -40), rot: E(0, 0, 0.06), from: V(42, 8, -24), t0: 0.31, t1: 0.40 });
   const hL = new THREE.Mesh(hstGeo, skinMat); hL.scale.x = -1;
@@ -168,17 +272,39 @@ function init(renderer) {
   /* engines */
   function engine() {
     const g = new THREE.Group();
-    const nacGeo = new THREE.CylinderGeometry(3.5, 3.2, 11, 26, 1, true);
-    nacGeo.rotateX(Math.PI / 2);
-    g.add(new THREE.Mesh(nacGeo, skinMat));
-    const lip = new THREE.Mesh(new THREE.TorusGeometry(3.5, 0.45, 10, 26), brandMat);
-    lip.position.z = 5.5; g.add(lip);
-    const face = new THREE.Mesh(new THREE.CircleGeometry(3.1, 24), darkMat);
-    face.position.z = 4.4; g.add(face);
-    const coneGeo = new THREE.ConeGeometry(2.6, 4.5, 22); coneGeo.rotateX(-Math.PI / 2);
-    const cone = new THREE.Mesh(coneGeo, trimMat); cone.position.z = -7.2; g.add(cone);
-    const pyl = new THREE.Mesh(new THREE.BoxGeometry(1.3, 5, 7), trimMat);
-    pyl.position.set(0, 4, -1); g.add(pyl);
+    /* cowl lathed as a curved body rather than a plain tube */
+    const cowl = lathe([[3.05, 5.6], [3.45, 4.6], [3.6, 2.6], [3.55, -0.6],
+                        [3.3, -3.4], [3.0, -5.2], [2.8, -5.6]], 0, Math.PI * 2, 30);
+    g.add(new THREE.Mesh(cowl, skinMat));
+    /* inlet lip rolls inward, so the intake reads as a duct not a sticker */
+    const lipGeo = new THREE.TorusGeometry(3.2, 0.42, 12, 30);
+    const lip = new THREE.Mesh(lipGeo, brandMat);
+    lip.position.z = 5.6; g.add(lip);
+    const duct = lathe([[2.85, 5.6], [2.5, 4.0], [2.45, 2.4]], 0, Math.PI * 2, 26);
+    g.add(new THREE.Mesh(duct, darkMat));
+    /* fan face: spinner plus blades, catching the key light */
+    const spinner = new THREE.Mesh(new THREE.ConeGeometry(0.65, 1.8, 16), trimMat);
+    spinner.geometry.rotateX(Math.PI / 2);
+    spinner.position.z = 3.5; g.add(spinner);
+    const bladeGeo = new THREE.BoxGeometry(0.34, 2.0, 0.1);
+    for (let i = 0; i < 18; i++) {
+      const b = new THREE.Mesh(bladeGeo, trimMat);
+      const a = (i / 18) * Math.PI * 2;
+      b.position.set(Math.sin(a) * 1.45, Math.cos(a) * 1.45, 2.5);
+      b.rotation.z = -a; b.rotation.y = 0.5;
+      g.add(b);
+    }
+    const nozzle = lathe([[2.7, -5.6], [2.35, -7.4], [1.9, -8.6]], 0, Math.PI * 2, 24);
+    g.add(new THREE.Mesh(nozzle, trimMat));
+    const plug = new THREE.Mesh(new THREE.ConeGeometry(1.5, 3.6, 20), darkMat);
+    plug.geometry.rotateX(-Math.PI / 2);
+    plug.position.z = -9.2; g.add(plug);
+    /* pylon tapers into the wing instead of being a slab */
+    const pyl = new THREE.Mesh(surface(
+      { at: 0,   le: 3.5, chord: 9, thick: 0.20 },
+      { at: 5.4, le: 1.5, chord: 7, thick: 0.16 }, 4, true), trimMat);
+    pyl.position.set(0, 0.6, -1);
+    g.add(pyl);
     return g;
   }
   addPart(engine(), { pos: V(15, -5.6, 6), from: V(15, -48, 6), t0: 0.36, t1: 0.46 });
@@ -511,6 +637,7 @@ function init(renderer) {
     banner.scale.setScalar(Math.min(1, (visW * 0.86) / 170));
     camera.updateProjectionMatrix();
     needsRender = true;
+    readScroll();
   }
   addEventListener("resize", resize, { passive: true });
 
@@ -524,14 +651,13 @@ function init(renderer) {
     const r = trackEl.getBoundingClientRect();
     const span = r.height - innerHeight;
     const p = span <= 0 ? 0 : clamp(-r.top / span);
+    /* Visibility is measured here rather than by an IntersectionObserver. The
+       observer only reports threshold crossings: if its first sample landed before
+       layout settled it would say "off screen", and sitting still inside the section
+       crosses nothing afterwards — so rendering would stay switched off for good. */
+    const vis = r.bottom > -200 && r.top < innerHeight + 200;
+    if (vis !== onScreen) { onScreen = vis; needsRender = true; }
     if (Math.abs(p - progress) > 0.0002) { progress = p; needsRender = true; }
-  }
-
-  if ("IntersectionObserver" in window) {
-    new IntersectionObserver(
-      es => es.forEach(e => { onScreen = e.isIntersecting; if (onScreen) needsRender = true; }),
-      { rootMargin: "150px" }
-    ).observe(section);
   }
 
   function frame() {
@@ -550,7 +676,12 @@ function init(renderer) {
     renderer.render(scene, camera);
   } else {
     addEventListener("scroll", readScroll, { passive: true });
+    /* The page can load already scrolled — browser scroll restoration, or a deep
+       link. Without these the scene would sit frozen at progress 0 until the first
+       scroll event, because init ran before layout settled. */
+    addEventListener("load", readScroll);
     readScroll();
+    requestAnimationFrame(() => { readScroll(); requestAnimationFrame(readScroll); });
     frame();
   }
   section.classList.add("ready3d");

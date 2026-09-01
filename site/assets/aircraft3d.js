@@ -4,6 +4,7 @@
    three.js r160 is vendored at assets/vendor/three/. */
 
 import * as THREE from "./vendor/three/three.module.min.js";
+import { GLTFLoader } from "./vendor/three/GLTFLoader.js";
 
 const section = document.getElementById("build3d");
 const canvas  = document.getElementById("build3dCanvas");
@@ -334,14 +335,24 @@ function init(renderer) {
   aircraft.add(livery);
   const liveryMats = [brandMat, cheatMat, glassMat];
 
-  const belly = lathe(FULL_P, -Math.PI * 0.30, Math.PI * 0.60, 40);
-  belly.scale(1.012, 1.012, 1.0);
-  livery.add(new THREE.Mesh(belly, brandMat));
-  for (const start of [-Math.PI * 0.42, Math.PI * 0.32]) {
-    const c = lathe(FULL_P, start, Math.PI * 0.10, 40);
-    c.scale(1.022, 1.022, 1.0);
-    livery.add(new THREE.Mesh(c, cheatMat));
+  /* Cheatlines. A partial lathe over the fuselage profile follows the body contour
+     exactly, so the stripe stays the same width as the section tapers — which is how
+     a real one is painted. phi 0 is the belly, 90deg the right flank, 270deg the left,
+     so a band is drawn once per side. Radius is nudged out to sit on the skin. */
+  const D = Math.PI / 180;
+  function cheatline(centreDeg, widthDeg, mat, lift) {
+    for (const c of [centreDeg, 360 - centreDeg]) {
+      const g = lathe(FULL_P, (c - widthDeg / 2) * D, widthDeg * D, 40);
+      g.scale(lift, lift, 1.0);
+      livery.add(new THREE.Mesh(g, mat));
+    }
   }
+  cheatline(96, 13, brandMat, 1.013);   // broad red stripe under the window line
+  cheatline(80, 4.5, cheatMat, 1.020);  // thin orange pinstripe below it
+  /* keep a dark belly so the underside doesn't read as bare white */
+  const belly = lathe(FULL_P, -Math.PI * 0.16, Math.PI * 0.32, 40);
+  belly.scale(1.010, 1.010, 1.0);
+  livery.add(new THREE.Mesh(belly, brandMat));
 
   const winMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.7, 0.9, 1.5), glassMat, 60);
   const dummy = new THREE.Object3D();
@@ -369,13 +380,117 @@ function init(renderer) {
       depthWrite: false, side: THREE.DoubleSide });
     fadeMats.push(m); liveryMats.push(m);
     for (const s of [1, -1]) {
-      const pl = new THREE.Mesh(new THREE.PlaneGeometry(10, 8.1), m);
-      pl.position.set(s * 0.95, 15.5, -38);
+      /* Box solved to stay inside the swept fin outline at every height it spans —
+         sized any larger and the leading edge of the mark hangs off into open air. */
+      const pl = new THREE.Mesh(new THREE.PlaneGeometry(12.8, 11), m);
+      pl.position.set(s * 1.39, 13, -39.5);
       pl.rotation.y = s > 0 ? Math.PI / 2 : -Math.PI / 2;
       livery.add(pl);
     }
     needsRender = true;
   });
+
+  /* ----------------------------------------------------- C919 airframe -----
+     The generated aircraft above stays in the scene as a fallback and is hidden
+     the moment the real model arrives, so a failed or slow fetch still renders
+     something. Model: C919 by iucc92 (CGTrader), FBX converted to glB. */
+  let usingModel = false;
+  const modelDecals = [];
+  const modelGroup = new THREE.Group();
+  modelGroup.visible = false;
+  aircraft.add(modelGroup);
+
+  const hullMat = track(new THREE.MeshStandardMaterial({
+    color: 0xeef1f7, metalness: 0.22, roughness: 0.20,
+    transparent: true, opacity: 0, envMapIntensity: 1.15
+  }));
+  const hullDark = track(new THREE.MeshStandardMaterial({
+    color: 0x121821, metalness: 0.5, roughness: 0.35,
+    transparent: true, opacity: 0, envMapIntensity: 1.0
+  }));
+  const edgeMat = track(new THREE.LineBasicMaterial({
+    color: 0xff5334, transparent: true, opacity: 0, depthWrite: false
+  }));
+
+  /* Cheatlines are painted by height in the shader rather than with a texture:
+     the model's UVs are unknown, and a band in object space follows the real hull
+     exactly. Geometry is pre-baked into aircraft space so position.y is usable. */
+  const STRIPE = { value: 0 };
+  hullMat.onBeforeCompile = sh => {
+    sh.uniforms.uStripe = STRIPE;
+    sh.vertexShader = "varying vec3 vLocal;\n" + sh.vertexShader.replace(
+      "#include <begin_vertex>", "#include <begin_vertex>\n  vLocal = position;");
+    sh.fragmentShader = "varying vec3 vLocal;\nuniform float uStripe;\n" + sh.fragmentShader.replace(
+      "#include <color_fragment>",
+      `#include <color_fragment>
+       float onBody = 1.0 - smoothstep(6.5, 9.0, abs(vLocal.x));   // fuselage only
+       float red    = (1.0 - smoothstep(0.9, 1.3, abs(vLocal.y - 1.4))) * onBody;
+       float orange = (1.0 - smoothstep(0.3, 0.5, abs(vLocal.y + 0.4))) * onBody;
+       diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.847, 0.141, 0.102), red * uStripe);
+       diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.969, 0.584, 0.129), orange * uStripe);`);
+  };
+
+  new GLTFLoader().load("assets/models/c919.glb", gltf => {
+    const root = gltf.scene;
+    root.updateWorldMatrix(true, true);
+    const box = new THREE.Box3().setFromObject(root);
+    const size = box.getSize(new THREE.Vector3());
+    const ctr  = box.getCenter(new THREE.Vector3());
+    const k = 102 / size.z;                       // match the scene's fuselage length
+    const norm = new THREE.Matrix4()
+      .makeScale(k, k, k)
+      .multiply(new THREE.Matrix4().makeTranslation(-ctr.x, -ctr.y, -ctr.z));
+
+    const meshes = [];
+    root.updateWorldMatrix(true, true);
+    root.traverse(o => { if (o.isMesh) meshes.push(o); });
+    for (const m of meshes) {
+      const g = m.geometry.clone();
+      g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(norm, m.matrixWorld));
+      g.deleteAttribute("uv");
+      const src = Array.isArray(m.material) ? m.material[0] : m.material;
+      const dark = src && src.color && src.color.getHSL({}).l < 0.42;
+      modelGroup.add(new THREE.Mesh(g, dark ? hullDark : hullMat));
+      /* panel outlines, not every triangle — 65k tris of wireframe reads as noise */
+      modelGroup.add(new THREE.LineSegments(new THREE.EdgesGeometry(g, 24), edgeMat));
+    }
+    /* sit it on the floor */
+    const nb = new THREE.Box3().setFromObject(modelGroup);
+    modelGroup.position.y = FLOOR_Y - nb.min.y;
+
+    /* Find the fin by bounding what sits high and aft, then put the mark on its
+       flanks — measured rather than hand-placed, so it cannot float off the edge. */
+    const fin = new THREE.Box3();
+    modelGroup.traverse(o => {
+      if (!o.isMesh) return;
+      o.geometry.computeBoundingBox();
+      const b = o.geometry.boundingBox;
+      if (b.max.y > 14 && b.max.z < -18 && Math.abs(b.min.x + b.max.x) / 2 < 4) fin.union(b);
+    });
+    if (!fin.isEmpty()) {
+      const c = fin.getCenter(new THREE.Vector3()), fs = fin.getSize(new THREE.Vector3());
+      const h = Math.min(fs.y * 0.42, 11), w = h * 1.228;   // mark is 1000x814
+      new THREE.TextureLoader().load("assets/brand/geefit-mark-ondark.svg", tex => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        const dm = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0,
+          depthWrite: false, side: THREE.DoubleSide });
+        fadeMats.push(dm); modelDecals.push(dm);
+        for (const sgn of [1, -1]) {
+          const pl = new THREE.Mesh(new THREE.PlaneGeometry(w, h), dm);
+          pl.position.set(c.x + sgn * (fs.x / 2 + 0.25), c.y + fs.y * 0.06, c.z + fs.z * 0.04);
+          pl.rotation.y = sgn > 0 ? Math.PI / 2 : -Math.PI / 2;
+          modelGroup.add(pl);
+        }
+        needsRender = true;
+      });
+    }
+
+    for (const part of parts) part.g.visible = false;
+    livery.visible = false;
+    usingModel = true;
+    modelGroup.visible = true;
+    needsRender = true;
+  }, undefined, () => { /* keep the generated fallback */ });
 
   /* ------------------------------------------------------------ expo hall */
   const expo = new THREE.Group();
@@ -556,7 +671,19 @@ function init(renderer) {
   function update(p) {
     jig.material.opacity = seg(p, 0, 0.05) * (1 - seg(p, 0.62, 0.75)) * 0.8;
 
+    if (usingModel) {
+      /* One continuous reveal: panel outlines draw in, the surface resolves under
+         them, then the livery paints on. No part-by-part assembly. */
+      const solidM = ease(seg(p, 0.30, 0.62));
+      edgeMat.opacity = seg(p, 0.03, 0.16) * (1 - ease(seg(p, 0.40, 0.66))) * 0.85;
+      hullMat.opacity = solidM;
+      hullDark.opacity = solidM;
+      STRIPE.value = ease(seg(p, 0.62, 0.78));
+      for (const m of modelDecals) m.opacity = STRIPE.value;
+    }
+
     for (const part of parts) {
+      if (usingModel) break;
       const t = easeOut(seg(p, part.t0, part.t1));
       part.g.visible = t > 0.001;
       part.g.position.copy(tmp.copy(part.from).lerp(part.home, t));
@@ -567,8 +694,8 @@ function init(renderer) {
       );
     }
 
-    const solid = ease(seg(p, 0.50, 0.66));
-    wireMat.opacity = seg(p, 0.02, 0.10) * (1 - solid) * 0.9;
+    const solid = usingModel ? 1 : ease(seg(p, 0.50, 0.66));
+    wireMat.opacity = usingModel ? 0 : seg(p, 0.02, 0.10) * (1 - solid) * 0.9;
     skinMat.opacity = solid;
     trimMat.opacity = solid;
     darkMat.opacity = solid;
@@ -576,7 +703,7 @@ function init(renderer) {
     aircraft.rotation.y = lerp(0, yawEnd, ease(seg(p, 0.62, 0.86)));
 
     const liv = ease(seg(p, 0.66, 0.77));
-    livery.visible = liv > 0.001;
+    livery.visible = !usingModel && liv > 0.001;
     for (const m of liveryMats) m.opacity = liv;
 
     const hall = ease(seg(p, 0.74, 0.88));
@@ -627,8 +754,11 @@ function init(renderer) {
     camera.fov = aspect < 1 ? 54 : 40;
     /* A narrow viewport can't afford a wide silhouette, so square the aircraft up
        a little there and let it sit closer. */
-    yawEnd    = aspect < 1 ? 0.26 : 0.42;
-    halfWEnd  = aspect < 1 ? 57 : 63;
+    /* Open the stand angle enough that the fin — and the mark painted on it — is
+       actually readable; half-width tracks the yawed silhouette so the frustum fit
+       keeps the whole airframe in frame. Portrait stays squarer, it has less room. */
+    yawEnd    = aspect < 1 ? 0.30 : 0.62;
+    halfWEnd  = aspect < 1 ? 58 : 66;
     endDist   = Math.min(340, fitDistance(halfWEnd, HALF_H_END, aspect));
     startDist = Math.min(430, fitDistance(HALF_W_TOP, HALF_H_TOP, aspect));
     /* Size the backdrop to the frustum at its own depth so the wordmark never runs

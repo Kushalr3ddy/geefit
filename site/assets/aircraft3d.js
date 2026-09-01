@@ -396,6 +396,7 @@ function init(renderer) {
      something. Model: C919 by iucc92 (CGTrader), FBX converted to glB. */
   let usingModel = false;
   const modelDecals = [];
+  const modelParts = [];
   const modelGroup = new THREE.Group();
   modelGroup.visible = false;
   aircraft.add(modelGroup);
@@ -444,17 +445,93 @@ function init(renderer) {
       .makeScale(k, k, k)
       .multiply(new THREE.Matrix4().makeTranslation(-ctr.x, -ctr.y, -ctr.z));
 
+    /* Every mesh in this model is a component spanning both sides — the wings are a
+       single 99-unit mesh, the tailplanes a single 33-unit one. Anything that wide is
+       cut down the centreline so left and right can fly in separately. */
+    function splitByX(g) {
+      const src = g.index ? g.toNonIndexed() : g;
+      const pos = src.attributes.position, nrm = src.attributes.normal;
+      const keep = [[], []];
+      for (let t = 0; t < pos.count; t += 3) {
+        const cx = (pos.getX(t) + pos.getX(t + 1) + pos.getX(t + 2)) / 3;
+        keep[cx < 0 ? 0 : 1].push(t);
+      }
+      return keep.map(tris => {
+        if (!tris.length) return null;
+        const P = new Float32Array(tris.length * 9), N = nrm ? new Float32Array(tris.length * 9) : null;
+        tris.forEach((t, i) => {
+          for (let k = 0; k < 3; k++) {
+            P[i * 9 + k * 3]     = pos.getX(t + k);
+            P[i * 9 + k * 3 + 1] = pos.getY(t + k);
+            P[i * 9 + k * 3 + 2] = pos.getZ(t + k);
+            if (N) {
+              N[i * 9 + k * 3]     = nrm.getX(t + k);
+              N[i * 9 + k * 3 + 1] = nrm.getY(t + k);
+              N[i * 9 + k * 3 + 2] = nrm.getZ(t + k);
+            }
+          }
+        });
+        const out = new THREE.BufferGeometry();
+        out.setAttribute("position", new THREE.BufferAttribute(P, 3));
+        if (N) out.setAttribute("normal", new THREE.BufferAttribute(N, 3));
+        else out.computeVertexNormals();
+        return out;
+      });
+    }
+
+    /* Sort each piece into an assembly by where it sits and how big it is. */
+    function classify(b) {
+      const c = b.getCenter(new THREE.Vector3()), sz = b.getSize(new THREE.Vector3());
+      const side = c.x < 0 ? "L" : "R";
+      if (c.y > 8 && c.z < -25) return "fin";
+      if (c.z < -28) return "tail" + side;
+      if (c.y < -2.6 && c.z > 2 && c.z < 26 && Math.abs(c.x) > 6) return "engine" + side;
+      if (c.y < -4.2 && Math.abs(c.x) < 8) return "gear";
+      if (Math.abs(c.x) > 9 && sz.z < 40) return "wing" + side;
+      return "fuselage";
+    }
+
+    const groups = {};
+    function bin(name) {
+      if (!groups[name]) { groups[name] = new THREE.Group(); modelGroup.add(groups[name]); }
+      return groups[name];
+    }
+
     const meshes = [];
     root.updateWorldMatrix(true, true);
     root.traverse(o => { if (o.isMesh) meshes.push(o); });
     for (const m of meshes) {
-      const g = m.geometry.clone();
-      g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(norm, m.matrixWorld));
-      g.deleteAttribute("uv");
+      const g0 = m.geometry.clone();
+      g0.applyMatrix4(new THREE.Matrix4().multiplyMatrices(norm, m.matrixWorld));
+      g0.deleteAttribute("uv");
+      g0.computeBoundingBox();
       const src = Array.isArray(m.material) ? m.material[0] : m.material;
       const dark = src && src.color && src.color.getHSL({}).l < 0.42;
-      modelGroup.add(new THREE.Mesh(g, dark ? hullDark : hullMat));
-      modelGroup.add(new THREE.Mesh(g, edgeMat));
+      const wide = g0.boundingBox.max.x - g0.boundingBox.min.x > 34;
+      for (const g of (wide ? splitByX(g0) : [g0])) {
+        if (!g) continue;
+        g.computeBoundingBox();
+        const holder = bin(classify(g.boundingBox));
+        holder.add(new THREE.Mesh(g, dark ? hullDark : hullMat));
+        holder.add(new THREE.Mesh(g, edgeMat));
+      }
+    }
+
+    /* Entry vector and timing per assembly, mirroring the old build order. */
+    const CHOREO = {
+      fuselage: [V(0, -52, 0),   0.05, 0.15],
+      wingL:    [V(-64, -14, 0), 0.15, 0.25],
+      wingR:    [V(64, -14, 0),  0.17, 0.27],
+      fin:      [V(0, 56, -20),  0.25, 0.34],
+      tailL:    [V(-44, 8, -26), 0.27, 0.36],
+      tailR:    [V(44, 8, -26),  0.29, 0.38],
+      engineL:  [V(-18, -48, 6), 0.36, 0.45],
+      engineR:  [V(18, -48, 6),  0.38, 0.47],
+      gear:     [V(0, 20, 10),   0.45, 0.53]
+    };
+    for (const [name, grp] of Object.entries(groups)) {
+      const c = CHOREO[name] || [V(0, -40, 0), 0.05, 0.15];
+      modelParts.push({ g: grp, from: c[0], t0: c[1], t1: c[2] });
     }
     /* sit it on the floor */
     const nb = new THREE.Box3().setFromObject(modelGroup);
@@ -481,7 +558,7 @@ function init(renderer) {
           const pl = new THREE.Mesh(new THREE.PlaneGeometry(w, h), dm);
           pl.position.set(c.x + sgn * (fs.x / 2 + 0.25), c.y + fs.y * 0.06, c.z + fs.z * 0.04);
           pl.rotation.y = sgn > 0 ? Math.PI / 2 : -Math.PI / 2;
-          modelGroup.add(pl);
+          (groups.fin || modelGroup).add(pl);   // ride with the fin as it flies in
         }
         needsRender = true;
       });
@@ -670,17 +747,23 @@ function init(renderer) {
 
   /* --------------------------------------------------------------- update */
   const tmp = new THREE.Vector3();
+  const ORIGIN = new THREE.Vector3();
   function update(p) {
     jig.material.opacity = seg(p, 0, 0.05) * (1 - seg(p, 0.62, 0.75)) * 0.8;
 
     if (usingModel) {
-      /* One continuous reveal: panel outlines draw in, the surface resolves under
-         them, then the livery paints on. No part-by-part assembly. */
-      const solidM = ease(seg(p, 0.30, 0.62));
-      edgeMat.opacity = seg(p, 0.03, 0.16) * (1 - ease(seg(p, 0.40, 0.66))) * 0.85;
+      /* The assemblies fly in as wireframe, the surface resolves once they have all
+         landed, then the livery paints on. */
+      for (const mp of modelParts) {
+        const t = easeOut(seg(p, mp.t0, mp.t1));
+        mp.g.visible = t > 0.001;
+        mp.g.position.copy(tmp.copy(mp.from).lerp(ORIGIN, t));
+      }
+      const solidM = ease(seg(p, 0.52, 0.68));
+      edgeMat.opacity = seg(p, 0.03, 0.10) * (1 - ease(seg(p, 0.54, 0.70))) * 0.85;
       hullMat.opacity = solidM;
       hullDark.opacity = solidM;
-      STRIPE.value = ease(seg(p, 0.62, 0.78));
+      STRIPE.value = ease(seg(p, 0.66, 0.80));
       for (const m of modelDecals) m.opacity = STRIPE.value;
     }
 

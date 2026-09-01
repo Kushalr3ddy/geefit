@@ -566,10 +566,23 @@ function init(renderer) {
       });
     }
 
+    /* Capture the world corners with the aircraft square-on; the solver spins them. */
+    const keepYaw = aircraft.rotation.y;
+    aircraft.rotation.y = 0;
+    aircraft.updateWorldMatrix(true, true);
+    const wb = new THREE.Box3().setFromObject(modelGroup);
+    modelCorners = [];
+    for (const x of [wb.min.x, wb.max.x])
+      for (const y of [wb.min.y, wb.max.y])
+        for (const z of [wb.min.z, wb.max.z]) modelCorners.push(new THREE.Vector3(x, y, z));
+    modelCentreY = wb.getCenter(new THREE.Vector3()).y;
+    aircraft.rotation.y = keepYaw;
+    aircraft.updateWorldMatrix(true, true);
     for (const part of parts) part.g.visible = false;
     livery.visible = false;
     usingModel = true;
     modelGroup.visible = true;
+    resize();            // re-solve the framing now that the real bounds are known
     needsRender = true;
   }, undefined, () => { /* keep the generated fallback */ });
 
@@ -604,8 +617,10 @@ function init(renderer) {
   floor.rotation.x = -Math.PI / 2; floor.position.y = FLOOR_Y - 0.1;
   expo.add(floor);
 
-  const carpet = new THREE.Mesh(new THREE.PlaneGeometry(136, 124), carpetMat);
-  carpet.rotation.x = -Math.PI / 2; carpet.position.set(0, FLOOR_Y, -4);
+  /* Runs well forward of the aircraft so there is stand to stand on in the
+     foreground, rather than the carpet stopping at the nose. */
+  const carpet = new THREE.Mesh(new THREE.PlaneGeometry(158, 210), carpetMat);
+  carpet.rotation.x = -Math.PI / 2; carpet.position.set(0, FLOOR_Y, 18);
   expo.add(carpet);
 
   const grid = new THREE.GridHelper(700, 70, 0x2a3346, 0x161c28);
@@ -656,7 +671,7 @@ function init(renderer) {
   const postGeo = new THREE.CylinderGeometry(0.5, 0.5, 7, 8);
   const ropeGeo = new THREE.BoxGeometry(11, 0.35, 0.35);
   for (let x = -84; x <= 84; x += 12) {
-    for (const z of [64, -70]) {
+    for (const z of [68, -70]) {   // front rope sits between the aircraft and the public
       const p = new THREE.Mesh(postGeo, trussMat);
       p.position.set(x, FLOOR_Y + 3.5, z); expo.add(p);
       if (x < 84) {
@@ -667,12 +682,12 @@ function init(renderer) {
   }
 
   /* ---------------------------------------------------------------- crowd */
-  const PEOPLE = 58;
+  const PEOPLE = 58, FOREGROUND = 11;
   const personMat = solidMat(0x090c14, 0.0, 0.95);
   const bodyGeo = new THREE.CapsuleGeometry(0.62, 2.0, 4, 10); bodyGeo.translate(0, 1.62, 0);
   const headGeo = new THREE.SphereGeometry(0.5, 12, 10);       headGeo.translate(0, 3.55, 0);
-  const bodies = new THREE.InstancedMesh(bodyGeo, personMat, PEOPLE);
-  const heads  = new THREE.InstancedMesh(headGeo, personMat, PEOPLE);
+  const bodies = new THREE.InstancedMesh(bodyGeo, personMat, PEOPLE + FOREGROUND);
+  const heads  = new THREE.InstancedMesh(headGeo, personMat, PEOPLE + FOREGROUND);
   expo.add(bodies, heads);
 
   let rs = 20260831;
@@ -686,6 +701,13 @@ function init(renderer) {
       n++;
     } while (n < 40 && Math.abs(x) < 47 && z > -48 && z < 48);
     crowd.push({ x, z, rot: rnd() * Math.PI * 2, h: 0.9 + rnd() * 0.3, d: rnd() });
+  }
+  /* Visitors on the near carpet, in front of the aircraft and facing it. They read
+     larger because they are closer, which gives the hall some depth. */
+  for (let i = 0; i < FOREGROUND; i++) {
+    const x = (i / (FOREGROUND - 1) - 0.5) * 150 + (rnd() - 0.5) * 12;
+    const z = 74 + rnd() * 38;
+    crowd.push({ x, z, rot: Math.PI + (rnd() - 0.5) * 0.9, h: 0.95 + rnd() * 0.3, d: 0.55 + rnd() * 0.45 });
   }
 
   const jig = new THREE.GridHelper(150, 15, 0xe23a25, 0x39435e);
@@ -733,18 +755,58 @@ function init(renderer) {
     const t = Math.tan((camera.fov * D2R) / 2);
     return Math.max(halfH / t, halfW / (t * aspect)) * 1.06;
   }
+
+  /* Hand-tuned half-extents only ever fit the aircraft they were measured against.
+     Once a model is loaded the end distance is solved numerically instead: push the
+     camera back until every corner of its bounding box projects inside the frame. */
+  let modelCorners = null, modelCentreY = 12;
+  function solveEndDistance(aspect) {
+    if (!modelCorners) return null;
+    const probe = new THREE.PerspectiveCamera(camera.fov, aspect, camera.near, camera.far);
+    /* The aircraft group only ever yaws about the origin, so the end pose is the
+       captured corners spun by yawEnd — no matrix round-tripping to get wrong. */
+    const cy = Math.cos(yawEnd), sy = Math.sin(yawEnd);
+    const posed = modelCorners.map(c =>
+      new THREE.Vector3(c.x * cy + c.z * sy, c.y, -c.x * sy + c.z * cy));
+    const v = new THREE.Vector3();
+    const fits = d => {
+      placeCameraAt(probe, 1, d);
+      probe.updateMatrixWorld(true);
+      probe.updateProjectionMatrix();
+      for (const c of posed) {
+        v.copy(c).project(probe);
+        if (Math.abs(v.x) > 0.92 || Math.abs(v.y) > 0.92) return false;
+      }
+      return true;
+    };
+    let lo = 60, hi = 1200;
+    if (!fits(hi)) return hi;
+    for (let i = 0; i < 26; i++) {
+      const mid = (lo + hi) / 2;
+      if (fits(mid)) hi = mid; else lo = mid;
+    }
+    return hi;
+  }
+  /* Shared pose maths so the fit solver can aim a probe camera the same way. */
+  function placeCameraAt(cam, k, rad) {
+    const polar = lerp(3 * D2R, 79 * D2R, k);
+    const azim  = lerp(34 * D2R, 4 * D2R, k);
+    const ty    = lerp(2, modelCentreY, k);
+    camTarget.set(0, ty, 0);
+    cam.position.set(
+      rad * Math.sin(polar) * Math.sin(azim),
+      rad * Math.cos(polar) + lerp(0, 10, k),
+      rad * Math.sin(polar) * Math.cos(azim)
+    );
+    cam.lookAt(camTarget);
+  }
+
   function placeCamera(p) {
     const k = ease(clamp(p / 0.92));
     const polar = lerp(3 * D2R, 79 * D2R, k);     // plan view -> head-on
     const azim  = lerp(34 * D2R, 4 * D2R, k);
     const rad   = lerp(startDist, endDist, k) + Math.sin(p * Math.PI) * endDist * 0.09;
-    camTarget.set(0, lerp(2, 12, k), 0);
-    camera.position.set(
-      rad * Math.sin(polar) * Math.sin(azim),
-      rad * Math.cos(polar) + lerp(0, 10, k),
-      rad * Math.sin(polar) * Math.cos(azim)
-    );
-    camera.lookAt(camTarget);
+    placeCameraAt(camera, k, rad);
   }
 
   /* --------------------------------------------------------------- update */
@@ -805,7 +867,7 @@ function init(renderer) {
 
     const crowdT = seg(p, 0.86, 1.0);
     personMat.opacity = ease(seg(p, 0.86, 0.94));
-    for (let i = 0; i < PEOPLE; i++) {
+    for (let i = 0; i < crowd.length; i++) {
       const c = crowd[i];
       const local = clamp((crowdT - c.d * 0.55) / 0.45);
       const s = local <= 0 ? 0 : easeOut(local) * (1 + 0.16 * Math.sin(local * Math.PI)) * c.h;
@@ -846,7 +908,7 @@ function init(renderer) {
        keeps the whole airframe in frame. Portrait stays squarer, it has less room. */
     yawEnd    = aspect < 1 ? 0.30 : 0.62;
     halfWEnd  = aspect < 1 ? 58 : 66;
-    endDist   = Math.min(340, fitDistance(halfWEnd, HALF_H_END, aspect));
+    endDist   = solveEndDistance(aspect) || Math.min(340, fitDistance(halfWEnd, HALF_H_END, aspect));
     startDist = Math.min(430, fitDistance(HALF_W_TOP, HALF_H_TOP, aspect));
     /* Size the backdrop to the frustum at its own depth so the wordmark never runs
        off the edge. */

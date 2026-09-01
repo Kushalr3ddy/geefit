@@ -408,8 +408,11 @@ function init(renderer) {
     color: 0x121821, metalness: 0.5, roughness: 0.35,
     transparent: true, opacity: 0, envMapIntensity: 1.0
   }));
-  const edgeMat = track(new THREE.LineBasicMaterial({
-    color: 0xff5334, transparent: true, opacity: 0, depthWrite: false
+  /* Full triangle wireframe, same as the generated aircraft used — drawing only
+     the panel outlines (EdgesGeometry) left it looking too sparse. This reuses the
+     baked geometry rather than building a second one, so it costs no extra memory. */
+  const edgeMat = track(new THREE.MeshBasicMaterial({
+    color: 0xff5334, wireframe: true, transparent: true, opacity: 0, depthWrite: false
   }));
 
   /* Cheatlines are painted by height in the shader rather than with a texture:
@@ -451,8 +454,7 @@ function init(renderer) {
       const src = Array.isArray(m.material) ? m.material[0] : m.material;
       const dark = src && src.color && src.color.getHSL({}).l < 0.42;
       modelGroup.add(new THREE.Mesh(g, dark ? hullDark : hullMat));
-      /* panel outlines, not every triangle — 65k tris of wireframe reads as noise */
-      modelGroup.add(new THREE.LineSegments(new THREE.EdgesGeometry(g, 24), edgeMat));
+      modelGroup.add(new THREE.Mesh(g, edgeMat));
     }
     /* sit it on the floor */
     const nb = new THREE.Box3().setFromObject(modelGroup);

@@ -649,19 +649,31 @@ function init(renderer) {
   }
 
   /* backdrop banner drawn to a canvas texture */
+  const BANNER_TITLE = "bold 148px 'IBM Plex Sans', Helvetica, Arial, sans-serif";
+  const BANNER_SUB   = "500 50px 'IBM Plex Sans', Helvetica, Arial, sans-serif";
   const bc = document.createElement("canvas");
   bc.width = 2048; bc.height = 384;
   const bx = bc.getContext("2d");
-  bx.fillStyle = "#0e0e16"; bx.fillRect(0, 0, 2048, 384);
-  bx.strokeStyle = "#d8241a"; bx.lineWidth = 8; bx.strokeRect(4, 4, 2040, 376);
-  bx.textAlign = "center"; bx.textBaseline = "middle";
-  bx.fillStyle = "#f3f5f9";
-  bx.font = "bold 148px Sora, Inter, Helvetica, Arial, sans-serif";
-  bx.fillText("GLOBAL EXPO EVENTS", 1024, 166);
-  bx.fillStyle = "#f79521";
-  bx.font = "500 50px Inter, Helvetica, Arial, sans-serif";
-  bx.fillText("AIRCRAFT MANUFACTURING · SEVEN CITIES · TWENTY-ONE DAYS", 1024, 280);
+  function paintBanner() {
+    bx.fillStyle = "#0e0e16"; bx.fillRect(0, 0, 2048, 384);
+    bx.strokeStyle = "#d8241a"; bx.lineWidth = 8; bx.strokeRect(4, 4, 2040, 376);
+    bx.textAlign = "center"; bx.textBaseline = "middle";
+    bx.fillStyle = "#f3f5f9";
+    bx.font = BANNER_TITLE;
+    bx.fillText("GLOBAL EXPO EVENTS", 1024, 166);
+    bx.fillStyle = "#f79521";
+    bx.font = BANNER_SUB;
+    bx.fillText("AIRCRAFT MANUFACTURING · SEVEN CITIES · TWENTY-ONE DAYS", 1024, 280);
+  }
+  paintBanner();
   const bannerTex = new THREE.CanvasTexture(bc);
+  /* Canvas 2D silently falls back to Helvetica if the webfont has not finished
+     loading when fillText runs, so repaint once Plex is actually available. */
+  if (document.fonts && document.fonts.load) {
+    Promise.all([document.fonts.load(BANNER_TITLE), document.fonts.load(BANNER_SUB)])
+      .then(() => { paintBanner(); bannerTex.needsUpdate = true; })
+      .catch(() => {});
+  }
   bannerTex.colorSpace = THREE.SRGBColorSpace;
   const bannerMat = track(new THREE.MeshBasicMaterial({ map: bannerTex, transparent: true, opacity: 0 }));
   const banner = new THREE.Mesh(new THREE.PlaneGeometry(170, 26), bannerMat);

@@ -85,6 +85,9 @@ document.addEventListener("DOMContentLoaded", () => {
   window.addEventListener("scroll", queueSweep, { passive: true });
   window.addEventListener("resize", queueSweep, { passive: true });
   window.addEventListener("load", queueSweep);
+  // A backgrounded tab never runs requestAnimationFrame, so the sweep above
+  // cannot fire while hidden. Catch up the moment the tab is shown again.
+  document.addEventListener("visibilitychange", queueSweep);
   queueSweep();
 
   /* ---- count up the stat numerals ---- */

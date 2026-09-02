@@ -760,22 +760,28 @@ function init(renderer) {
      Once a model is loaded the end distance is solved numerically instead: push the
      camera back until every corner of its bounding box projects inside the frame. */
   let modelCorners = null, modelCentreY = 12;
-  function solveEndDistance(aspect) {
+  /** Smallest camera distance at which every corner of the model still projects
+   *  inside the frame, for a given point on the camera path. Solved rather than
+   *  tuned, because hand-set half-extents only ever fit one particular aircraft. */
+  function solveDistance(aspect, k, yaw) {
     if (!modelCorners) return null;
     const probe = new THREE.PerspectiveCamera(camera.fov, aspect, camera.near, camera.far);
-    /* The aircraft group only ever yaws about the origin, so the end pose is the
-       captured corners spun by yawEnd — no matrix round-tripping to get wrong. */
-    const cy = Math.cos(yawEnd), sy = Math.sin(yawEnd);
+    /* The aircraft group only ever yaws about the origin, so a pose is just the
+       captured corners spun by yaw — no matrix round-tripping to get wrong. */
+    const cy = Math.cos(yaw), sy = Math.sin(yaw);
     const posed = modelCorners.map(c =>
       new THREE.Vector3(c.x * cy + c.z * sy, c.y, -c.x * sy + c.z * cy));
     const v = new THREE.Vector3();
     const fits = d => {
-      placeCameraAt(probe, 1, d);
+      placeCameraAt(probe, k, d);
       probe.updateMatrixWorld(true);
       probe.updateProjectionMatrix();
+      /* Portrait has width to spare only by moving far away, which shrinks the
+         aircraft to a speck. Better to let the wingtips run past the edges. */
+      const limX = aspect < 1 ? 1.16 : 0.92;
       for (const c of posed) {
         v.copy(c).project(probe);
-        if (Math.abs(v.x) > 0.92 || Math.abs(v.y) > 0.92) return false;
+        if (Math.abs(v.x) > limX || Math.abs(v.y) > 0.92) return false;
       }
       return true;
     };
@@ -908,8 +914,13 @@ function init(renderer) {
        keeps the whole airframe in frame. Portrait stays squarer, it has less room. */
     yawEnd    = aspect < 1 ? 0.30 : 0.62;
     halfWEnd  = aspect < 1 ? 58 : 66;
-    endDist   = solveEndDistance(aspect) || Math.min(340, fitDistance(halfWEnd, HALF_H_END, aspect));
-    startDist = Math.min(430, fitDistance(HALF_W_TOP, HALF_H_TOP, aspect));
+    /* Solve both ends of the path. The plan view at the start needs its own fit —
+       it frames the full span and length flat-on, which is the widest the airframe
+       ever gets, and the old constants were measured against a smaller aircraft. */
+    endDist   = solveDistance(aspect, 1, yawEnd)
+             || Math.min(340, fitDistance(halfWEnd, HALF_H_END, aspect));
+    startDist = solveDistance(aspect, 0, 0)
+             || Math.min(430, fitDistance(HALF_W_TOP, HALF_H_TOP, aspect));
     /* Size the backdrop to the frustum at its own depth so the wordmark never runs
        off the edge. */
     const visW = 2 * (endDist + 100) * Math.tan((camera.fov * D2R) / 2) * aspect;

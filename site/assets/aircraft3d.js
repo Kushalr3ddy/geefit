@@ -591,6 +591,13 @@ function init(renderer) {
   expo.visible = false;
   scene.add(expo);
 
+  /* The built furniture — truss, lamps, banner, rope — sized as one structure in
+     resize(). Ground (floor, carpet, grid) and the crowd stay out of it: the ground
+     should always run past the frame, and horizontally scaling instanced people
+     would squash them. See the sizing block for why this group exists. */
+  const stand = new THREE.Group();
+  expo.add(stand);
+
   const floorMat  = solidMat(0x0a0c12, 0.1, 0.9);
   const carpetMat = solidMat(0x3a0d08, 0.05, 0.9);
   const trussMat  = solidMat(0x565f70, 0.8, 0.4);
@@ -629,22 +636,23 @@ function init(renderer) {
   track(grid.material);
   expo.add(grid);
 
+  const TRUSS_W = 230;   // widest thing in the stand; resize() fits the group to it
   for (const tz of [-74, -30]) {
     for (const ty of [56, 62]) {
-      const b = new THREE.Mesh(new THREE.BoxGeometry(230, 1.4, 1.4), trussMat);
-      b.position.set(0, ty, tz); expo.add(b);
+      const b = new THREE.Mesh(new THREE.BoxGeometry(TRUSS_W, 1.4, 1.4), trussMat);
+      b.position.set(0, ty, tz); stand.add(b);
     }
     for (let x = -102; x <= 102; x += 12) {
       const d = new THREE.Mesh(new THREE.BoxGeometry(1, 6.8, 1), trussMat);
       d.position.set(x, 59, tz);
       d.rotation.z = ((x / 12) | 0) % 2 ? 0.52 : -0.52;
-      expo.add(d);
+      stand.add(d);
     }
     for (const lx of [-60, 0, 60]) {
       const l = new THREE.Mesh(new THREE.BoxGeometry(5, 4, 5), lampMat);
-      l.position.set(lx, 53, tz); expo.add(l);
+      l.position.set(lx, 53, tz); stand.add(l);
       const cone = new THREE.Mesh(new THREE.ConeGeometry(13, 66, 20, 1, true), beamMat);
-      cone.position.set(lx, 19, tz); expo.add(cone);
+      cone.position.set(lx, 19, tz); stand.add(cone);
     }
   }
 
@@ -676,8 +684,9 @@ function init(renderer) {
   }
   bannerTex.colorSpace = THREE.SRGBColorSpace;
   const bannerMat = track(new THREE.MeshBasicMaterial({ map: bannerTex, transparent: true, opacity: 0 }));
-  const banner = new THREE.Mesh(new THREE.PlaneGeometry(170, 26), bannerMat);
-  banner.position.set(0, 40, -100);
+  const BANNER_W = 170, BANNER_H = 26, BANNER_TOP = 53;
+  const banner = new THREE.Mesh(new THREE.PlaneGeometry(BANNER_W, BANNER_H), bannerMat);
+  banner.position.set(0, BANNER_TOP - BANNER_H / 2, -100);
   expo.add(banner);
 
   const postGeo = new THREE.CylinderGeometry(0.5, 0.5, 7, 8);
@@ -685,10 +694,10 @@ function init(renderer) {
   for (let x = -84; x <= 84; x += 12) {
     for (const z of [68, -70]) {   // front rope sits between the aircraft and the public
       const p = new THREE.Mesh(postGeo, trussMat);
-      p.position.set(x, FLOOR_Y + 3.5, z); expo.add(p);
+      p.position.set(x, FLOOR_Y + 3.5, z); stand.add(p);
       if (x < 84) {
         const r = new THREE.Mesh(ropeGeo, brandMat);
-        r.position.set(x + 6, FLOOR_Y + 5.5, z); expo.add(r);
+        r.position.set(x + 6, FLOOR_Y + 5.5, z); stand.add(r);
       }
     }
   }
@@ -933,10 +942,21 @@ function init(renderer) {
              || Math.min(340, fitDistance(halfWEnd, HALF_H_END, aspect));
     startDist = solveDistance(aspect, 0, 0)
              || Math.min(430, fitDistance(HALF_W_TOP, HALF_H_TOP, aspect));
-    /* Size the backdrop to the frustum at its own depth so the wordmark never runs
-       off the edge. */
+    /* Size the stand to the frustum at its own depth so it never runs off the edge.
+       Scaling the banner alone — which is what this used to do — left a shrunken
+       sign hanging under a full-width truss on a phone, so the stand read as two
+       structures at different scales. Solve off the truss instead, the widest
+       member, and scale the whole group by it so the proportions hold everywhere.
+       Wide viewports clamp to 1, so the desktop framing is untouched. */
     const visW = 2 * (endDist + 100) * Math.tan((camera.fov * D2R) / 2) * aspect;
-    banner.scale.setScalar(Math.min(1, (visW * 0.86) / 170));
+    const standS = Math.min(1, (visW * 0.86) / TRUSS_W);
+    /* X only: the truss is a beam, so shortening it is the honest transform, and a
+       uniform shrink would drop the gantry onto the fin. */
+    stand.scale.x = standS;
+    /* The banner carries type, so it scales uniformly rather than squashing, and
+       hangs from a fixed top edge so the gap under the truss doesn't open up. */
+    banner.scale.setScalar(standS);
+    banner.position.y = BANNER_TOP - (BANNER_H * standS) / 2;
     camera.updateProjectionMatrix();
     needsRender = true;
     readScroll();

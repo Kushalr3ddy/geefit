@@ -804,6 +804,44 @@ footer.site {
 .two-col { display: grid; grid-template-columns: 1.3fr 1fr; gap: 40px; align-items: start; }
 @media (max-width: 860px) { .two-col { grid-template-columns: 1fr; } }
 
+/* ---------- Keynote copy blocks ---------- */
+/* Three structural facts rather than four. */
+.stat-strip.three { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 700px) { .stat-strip.three { grid-template-columns: 1fr; } }
+
+/* Headline claims: the number leads, the sentence follows. */
+.card.claim { padding-top: 30px; }
+.claim-num {
+  display: block;
+  font-family: Sora, Inter, sans-serif;
+  font-size: 2.6rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  background: var(--grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  margin-bottom: 14px;
+}
+.card.claim h3 { font-size: 1.06rem; margin: 0 0 8px; letter-spacing: -0.01em; }
+.card.claim p  { color: var(--ink-dim); font-size: 0.94rem; margin: 0; }
+
+/* The closing line of the Make-in-India block. */
+.rally {
+  margin: 26px 0 0;
+  font-family: Sora, Inter, sans-serif;
+  font-size: clamp(1.05rem, 2vw, 1.35rem);
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+.rally strong {
+  background: linear-gradient(100deg, var(--red-hot), var(--orange));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
 /* ---------- Media beside copy (home map, about portrait) ---------- */
 .split-media {
   display: grid;

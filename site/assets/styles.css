@@ -137,7 +137,6 @@
   --glow-1: rgba(226,58,37,0.10);
   --glow-2: rgba(247,149,33,0.09);
   --glow-3: rgba(184,26,16,0.07);
-  --sheen:  rgba(255,190,150,0.55);
 
   /* the 3D build stage */
   --stage-glow-1: rgba(226,58,37,0.10);
@@ -207,7 +206,6 @@
   --glow-1: rgba(226,58,37,0.20);
   --glow-2: rgba(247,149,33,0.10);
   --glow-3: rgba(184,26,16,0.14);
-  --sheen:  rgba(255,225,205,0.85);
 
   --stage-glow-1: rgba(226,58,37,0.16);
   --stage-glow-2: rgba(247,149,33,0.10);
@@ -479,30 +477,40 @@ nav.primary a[aria-current="page"]::after {
   overflow: hidden;
 }
 /* Brand watermark. Lives inside the hero, which clips it, so it can never reach
-   the 3D build section or any content below. Present on every page. */
+   the 3D build section or any content below. Present on every page.
+   Two layers: the GF letters hold still and the gold crescent turns around
+   them, which is why the mark is split into two files rather than one. */
 .hero .grid-art,
 .page-hero .grid-art {
   position: absolute;
   top: -60px; right: -140px;
   width: 620px; height: 620px;
-  background: url("brand/geefit-mark-ondark.svg") center/contain no-repeat;
-  opacity: 0.055;
   pointer-events: none;
-  animation: wm-turn 150s linear infinite, wm-breathe 19s ease-in-out infinite;
 }
-/* A light travelling across the mark, masked to its own shape so the glow only
-   ever falls on the logo and not on the rectangle around it. */
+/* The crescent. Its own circle centre sits at (417.2, 417.2) in the mark's
+   1000x814.08 viewBox, not at the middle of it — so once `contain` has
+   letterboxed the art inside a square box that centre lands at 41.72% across
+   and 51.02% down. Pivoting anywhere else makes the crescent orbit the letters
+   instead of spinning around them. The figure holds at any square size. */
+.hero .grid-art::before,
+.page-hero .grid-art::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("brand/geefit-mark-crescent-ondark.svg") center/contain no-repeat;
+  opacity: 0.11;
+  transform-origin: 41.72% 51.02%;
+  animation: wm-turn 72s linear infinite;
+}
+/* The GF letters, painted over the crescent and never moving. */
 .hero .grid-art::after,
 .page-hero .grid-art::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(115deg,
-    transparent 42%, var(--sheen) 50%, transparent 58%);
-  background-size: 280% 280%;
-  -webkit-mask: url("brand/geefit-mark-ondark.svg") center/contain no-repeat;
-          mask: url("brand/geefit-mark-ondark.svg") center/contain no-repeat;
-  animation: wm-sheen 11s ease-in-out infinite;
+  background: url("brand/geefit-mark-gf-ondark.svg") center/contain no-repeat;
+  opacity: 0.06;
+  animation: wm-breathe 19s ease-in-out infinite;
 }
 @keyframes wm-turn {
   from { transform: rotate(0deg); }
@@ -511,10 +519,6 @@ nav.primary a[aria-current="page"]::after {
 @keyframes wm-breathe {
   0%, 100% { opacity: 0.045; }
   50%      { opacity: 0.085; }
-}
-@keyframes wm-sheen {
-  0%, 62%, 100% { background-position: 140% 0%; }
-  22%           { background-position: -40% 100%; }
 }
 
 /* Subpage heroes are shorter, so the mark is scaled back and clipped the same way. */
@@ -851,6 +855,24 @@ table.rates tbody tr:hover { background: var(--tint-soft); }
   font-weight: 800;
   font-size: 0.9rem;
 }
+/* A partner who has a site of their own gets their real logo and a link out. */
+a.partner {
+  flex-direction: column;
+  gap: 11px;
+  padding: 22px 36px;
+  text-decoration: none;
+}
+a.partner img { display: block; height: 64px; width: auto; opacity: 0.9; transition: opacity .25s; }
+a.partner:hover img { opacity: 1; }
+a.partner .visit {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  transition: color .25s;
+}
+a.partner:hover .visit { color: var(--gold-bright); }
 
 /* ---------- CTA band ---------- */
 .cta-band {
@@ -1085,8 +1107,12 @@ footer.site {
 }
 .split-media .section-head { margin-bottom: 22px; }
 .split-media-body p:last-child { margin: 0; }
+/* Copy on the left, picture on the right — alternates with the default so two
+   of these on one page don't stack the same way round. */
+.split-media.reverse { grid-template-columns: 1.05fr 1fr; }
 @media (max-width: 880px) {
   .split-media { grid-template-columns: 1fr; gap: 30px; }
+  .split-media.reverse { grid-template-columns: 1fr; }
 }
 
 .media-frame {
@@ -1098,6 +1124,17 @@ footer.site {
   box-shadow: var(--shadow-media);
 }
 .media-frame img { width: 100%; height: auto; display: block; }
+/* Credit line for a licensed photograph. GODL-India and CC BY both require the
+   attribution to travel with the image, so it sits in the frame, not a footer. */
+.media-frame figcaption {
+  padding: 9px 14px;
+  border-top: 1px solid var(--line);
+  font-size: 0.71rem;
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+.media-frame figcaption a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.media-frame figcaption a:hover { color: var(--gold-bright); }
 
 .portrait-split {
   display: grid;
@@ -1140,7 +1177,7 @@ footer.site {
 .reveal.in { opacity: 1; transform: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .hero .grid-art, .page-hero .grid-art,
+  .hero .grid-art::before, .page-hero .grid-art::before,
   .hero .grid-art::after, .page-hero .grid-art::after { animation: none; }
   html { scroll-behavior: auto; }
   *, *::before, *::after {

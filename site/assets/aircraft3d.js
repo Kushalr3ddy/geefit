@@ -68,6 +68,7 @@ function init(renderer) {
       lamp:   0xffd9a0,
       grid:   [0x2a3346, 0x161c28],
       jig:    [0xe23a25, 0x39435e],
+      outline: 0x000000, outlineOpacity: 0,
       env:    ["#0b101c", "#7d93b6", "#cdd8ea", "#40485c", "#06070b"],
       banner: { bg: "#0e0e16", edge: "#d8241a", title: "#f3f5f9", sub: "#f79521" }
     },
@@ -79,15 +80,20 @@ function init(renderer) {
       exposure: 1.0,
       wire:   0xc21f10,
       floor:  0xe7eaf1,
-      /* Sits a shade darker than the floor and only lightly tinted, mirroring how
-         the dark carpet sat a shade lighter than the dark floor. A saturated red
-         here fills the frame at the closing camera and buries the HUD text. */
-      carpet: 0xd9bdb8,
+      /* An event red that grounds the aircraft against the near-white floor —
+         a pale carpet left the plane looking like it floated. Kept deep rather
+         than bright so it does not flood the frame at the closing camera; the HUD
+         carries its own scrim for the rest. */
+      carpet: 0x931b12,
       truss:  0x99a2b3,
       person: 0x424a61,
       lamp:   0xffcf8c,
       grid:   [0xa4aec2, 0xcdd4e0],
       jig:    [0xd02a16, 0xa9b3c6],
+      /* A graphite edge line traced over the finished hull. The white airframe
+         washes into the white page otherwise; this defines it without tinting the
+         skin grey. Off in dark mode, where the hull already reads. */
+      outline: 0x2b3140, outlineOpacity: 0.55,
       env:    ["#eaf0fa", "#cdd8ea", "#ffffff", "#c3cbd8", "#aeb6c4"],
       banner: { bg: "#ffffff", edge: "#d02a16", title: "#14161d", sub: "#b96c07" }
     }
@@ -467,6 +473,12 @@ function init(renderer) {
   const edgeMat = track(new THREE.MeshBasicMaterial({
     color: pal.wire, wireframe: true, transparent: true, opacity: 0, depthWrite: false
   }));
+  /* Feature-edge outline drawn over the resolved hull (silhouette, panel seams,
+     window and door cuts, control-surface breaks). Fades in with the solid skin
+     and is held on only in light mode — see the palette's outlineOpacity. */
+  const outlineMat = new THREE.LineBasicMaterial({
+    color: pal.outline, transparent: true, opacity: 0, depthWrite: false
+  });
 
   /* Cheatlines are painted by height in the shader rather than with a texture:
      the model's UVs are unknown, and a band in object space follows the real hull
@@ -568,6 +580,7 @@ function init(renderer) {
         const holder = bin(classify(g.boundingBox));
         holder.add(new THREE.Mesh(g, dark ? hullDark : hullMat));
         holder.add(new THREE.Mesh(g, edgeMat));
+        holder.add(new THREE.LineSegments(new THREE.EdgesGeometry(g, 24), outlineMat));
       }
     }
 
@@ -897,6 +910,7 @@ function init(renderer) {
       edgeMat.opacity = seg(p, 0.03, 0.10) * (1 - ease(seg(p, 0.54, 0.70))) * 0.85;
       hullMat.opacity = solidM;
       hullDark.opacity = solidM;
+      outlineMat.opacity = solidM * pal.outlineOpacity;
       STRIPE.value = ease(seg(p, 0.66, 0.80));
       for (const m of modelDecals) m.opacity = STRIPE.value;
     }
@@ -1036,10 +1050,12 @@ function init(renderer) {
 
     recolorGrid(grid, 70, pal.grid[0], pal.grid[1]);
     recolorGrid(jig, 15, pal.jig[0], pal.jig[1]);
+    outlineMat.color.set(pal.outline);
 
     buildEnvironment();
     paintBanner();
     bannerTex.needsUpdate = true;
+    update(progress);   // recompute opacities (outline etc.) for the new palette
     needsRender = true;
   }
 

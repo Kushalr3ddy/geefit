@@ -70,7 +70,22 @@
   text-shadow: var(--stage-text-shadow);
 }
 
-.build3d-hud { max-width: 46ch; }
+/* The closing camera fills the lower frame with the red carpet, so the readout
+   sits on a faint frosted panel of the page ground and carries a matching halo —
+   legible over the carpet in either theme, and near-invisible over the plain
+   backdrop of the earlier phases. */
+.build3d-hud {
+  max-width: 46ch;
+  width: max-content;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.build3d-phase, .build3d-caption {
+  text-shadow: 0 1px 8px var(--bg), 0 0 3px var(--bg);
+}
 .build3d-phase {
   display: block;
   font-size: 0.78rem;

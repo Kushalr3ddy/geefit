@@ -71,20 +71,23 @@
 }
 
 /* The closing camera fills the lower frame with the red carpet, so the readout
-   sits on a faint frosted panel of the page ground and carries a matching halo —
-   legible over the carpet in either theme, and near-invisible over the plain
-   backdrop of the earlier phases. */
+   sits on a near-solid card of the page ground with a hairline edge, and its text
+   carries a crisp graphite border (not a soft glow — that bloomed over the red).
+   paint-order keeps the fill on top so the border never thins the letters. */
 .build3d-hud {
   max-width: 46ch;
   width: max-content;
   padding: 12px 16px;
   border-radius: 12px;
-  background: color-mix(in srgb, var(--bg) 60%, transparent);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 .build3d-phase, .build3d-caption {
-  text-shadow: 0 1px 8px var(--bg), 0 0 3px var(--bg);
+  -webkit-text-stroke: 0.6px color-mix(in srgb, var(--ink) 62%, transparent);
+  paint-order: stroke fill;
+  text-shadow: none;
 }
 .build3d-phase {
   display: block;
@@ -99,7 +102,8 @@
   margin: 0 0 16px;
   color: var(--ink-dim);
   font-size: 0.96rem;
-  text-shadow: var(--stage-text-shadow);
+  /* No glow — the caption sits on the opaque HUD card and carries the graphite
+     border set above; the soft stage shadow bloomed over the red carpet. */
   min-height: 2.9em;
 }
 .build3d-progress {

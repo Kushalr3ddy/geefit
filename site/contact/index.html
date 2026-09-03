@@ -16,9 +16,10 @@
 <meta property="og:description" content="Exhibitor, sponsorship, visitor and press enquiries for Global Expo Events. Bengaluru office and direct contacts.">
 <meta property="og:image" content="../assets/brand/og-image.png">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<script>/* Set the theme before first paint so a dark-mode visitor never sees a white flash. */
+(function(){try{if(localStorage.getItem("geefit-theme")==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(e){}})();</script>
+<link rel="preload" href="../assets/fonts/ibm-plex-sans-400-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../assets/fonts/ibm-plex-sans-700-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="../assets/styles.css?v=43">
 </head>
 <body>
@@ -26,7 +27,7 @@
 <header class="site">
   <div class="nav-inner">
     <a href="../" class="brand" aria-label="GeeFit Innovations — home">
-      <img src="../assets/brand/geefit-horizontal-ondark.svg" alt="GeeFit Innovations" width="152" height="34">
+      <img class="logo-l" src="../assets/brand/geefit-horizontal.svg" alt="GeeFit Innovations" width="152" height="34"><img class="logo-d" src="../assets/brand/geefit-horizontal-ondark.svg" alt="GeeFit Innovations" width="152" height="34">
       <span class="brand-txt">Global Expo Events<small>SEVEN CITIES · 21 DAYS</small></span>
     </a>
     <nav class="primary">
@@ -36,6 +37,10 @@
       <a href="../participate/">Participate</a>
       <a href="../contact/" aria-current="page">Contact</a>
     </nav>
+    <button class="theme-toggle" type="button" aria-pressed="false" aria-label="Switch to dark theme" title="Switch to dark theme">
+      <svg class="i-moon" viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path fill="currentColor" d="M21 13.2A9 9 0 1 1 10.8 3a7.2 7.2 0 0 0 10.2 10.2z"/></svg>
+      <svg class="i-sun" viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="currentColor"/><path stroke="currentColor" stroke-width="1.9" stroke-linecap="round" d="M12 2.4v2.3M12 19.3v2.3M4.2 12H1.9M22.1 12h-2.3M6.5 6.5 4.9 4.9M19.1 19.1l-1.6-1.6M17.5 6.5l1.6-1.6M4.9 19.1l1.6-1.6"/></svg>
+    </button>
     <div class="nav-cta">
       <a href="../participate/" class="btn ghost sm">Exhibit with us</a>
       <a href="../contact/" class="btn primary sm">Attend an expo</a>
@@ -139,7 +144,7 @@
 <footer class="site">
   <div class="wrap">
     <div class="footer-brand">
-      <img src="../assets/brand/geefit-horizontal-ondark.svg" alt="GeeFit Innovations" width="178" height="40">
+      <img class="logo-l" src="../assets/brand/geefit-horizontal.svg" alt="GeeFit Innovations" width="178" height="40"><img class="logo-d" src="../assets/brand/geefit-horizontal-ondark.svg" alt="GeeFit Innovations" width="178" height="40">
     </div>
     <div class="footer-grid">
       <div>

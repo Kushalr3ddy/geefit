@@ -102,21 +102,55 @@
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
+/* Light is the default. Dark is opt-in: the user picks it from the header toggle
+   and the choice is stored in localStorage, which sets data-theme="dark" on <html>.
+   prefers-color-scheme is deliberately NOT consulted — dark is a manual choice. */
 :root {
-  /* base */
-  --bg:        #08080d;
-  --bg-2:      #0d0d14;
-  --surface:   #12121b;
-  --surface-2: #191924;
-  --line:      rgba(255,255,255,0.09);
-  --line-2:    rgba(255,255,255,0.14);
+  color-scheme: light;
 
-  /* brand */
-  --red-deep:  #b81a10;
-  --red:       #e23a25;
-  --red-hot:   #ff5334;
-  --orange:    #f79521;
-  --orange-lt: #ffb733;
+  /* base */
+  --bg:        #f7f7fa;
+  --bg-2:      #ffffff;
+  --surface:   #ffffff;
+  --surface-2: #f0f1f5;
+  --line:      rgba(18,20,30,0.12);
+  --line-2:    rgba(18,20,30,0.20);
+
+  /* brand — darkened from the on-dark values so they hold contrast on white */
+  --red-deep:  #9c1409;
+  --red:       #d02a16;
+  --red-hot:   #e8412a;
+  --orange:    #b96c07;
+  --orange-lt: #8f5305;
+
+  /* surface washes — neutral tints layered over the page */
+  --tint-soft:   rgba(18,20,30,0.030);
+  --tint:        rgba(18,20,30,0.048);
+  --tint-strong: rgba(18,20,30,0.065);
+  --grid-line:   rgba(18,20,30,0.05);
+
+  --header-bg:       rgba(255,255,255,0.85);
+  --header-bg-solid: rgba(255,255,255,0.97);
+  --shadow-card: 0 18px 40px -22px rgba(18,20,30,0.30);
+
+  /* ambient wash behind the page */
+  --glow-1: rgba(226,58,37,0.10);
+  --glow-2: rgba(247,149,33,0.09);
+  --glow-3: rgba(184,26,16,0.07);
+
+  /* the 3D build stage */
+  --stage-glow-1: rgba(226,58,37,0.10);
+  --stage-glow-2: rgba(247,149,33,0.08);
+  --stage-mid: #eef0f6;
+  --stage-text-shadow: 0 1px 2px rgba(255,255,255,0.9);
+
+  --field-bg: #ffffff;
+  --footer-wash: rgba(18,20,30,0.05);
+  --shadow-media: 0 24px 60px -34px rgba(18,20,30,0.34);
+
+  --tile-bg:  linear-gradient(135deg, #e6ecf7, #d5deef);
+  --tile-ink: #26364f;
+  --on-brand: #fff;
 
   /* legacy aliases — still referenced by inline styles in the HTML */
   --gold:        var(--orange);
@@ -128,9 +162,9 @@
   --navy-600:    var(--surface-2);
 
   /* ink */
-  --ink:       #f3f5f9;
-  --ink-dim:   #a9b2c3;
-  --ink-faint: #6d7688;
+  --ink:       #14161d;
+  --ink-dim:   #4b5364;
+  --ink-faint: #798194;
 
   /* type — IBM Plex, the family IBM commissioned as its own corporate face.
      Serif is reserved for pull quotes; everything else is the sans. */
@@ -141,6 +175,53 @@
   --radius: 16px;
   --ease: cubic-bezier(.22,.61,.36,1);
   --grad: linear-gradient(100deg, var(--red-deep), var(--red) 55%, var(--red-hot));
+}
+
+/* Dark theme — set by the header toggle, never by the OS preference. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg:        #08080d;
+  --bg-2:      #0d0d14;
+  --surface:   #12121b;
+  --surface-2: #191924;
+  --line:      rgba(255,255,255,0.09);
+  --line-2:    rgba(255,255,255,0.14);
+
+  --red-deep:  #b81a10;
+  --red:       #e23a25;
+  --red-hot:   #ff5334;
+  --orange:    #f79521;
+  --orange-lt: #ffb733;
+
+  --tint-soft:   rgba(255,255,255,0.022);
+  --tint:        rgba(255,255,255,0.035);
+  --tint-strong: rgba(255,255,255,0.045);
+  --grid-line:   rgba(255,255,255,0.028);
+
+  --header-bg:       rgba(8,8,13,0.82);
+  --header-bg-solid: rgba(8,8,13,0.97);
+  --shadow-card: 0 18px 40px -22px rgba(0,0,0,0.9);
+
+  --glow-1: rgba(226,58,37,0.20);
+  --glow-2: rgba(247,149,33,0.10);
+  --glow-3: rgba(184,26,16,0.14);
+
+  --stage-glow-1: rgba(226,58,37,0.16);
+  --stage-glow-2: rgba(247,149,33,0.10);
+  --stage-mid: #0a0a11;
+  --stage-text-shadow: 0 2px 26px rgba(0,0,0,0.75);
+
+  --field-bg: rgba(0,0,0,0.30);
+  --footer-wash: rgba(0,0,0,0.5);
+  --shadow-media: 0 24px 60px -34px rgba(0,0,0,0.9);
+
+  --tile-bg:  linear-gradient(135deg, #1b2f52, #0f1c33);
+  --tile-ink: #dfe6f2;
+
+  --ink:       #f3f5f9;
+  --ink-dim:   #a9b2c3;
+  --ink-faint: #6d7688;
 }
 
 * { box-sizing: border-box; }
@@ -166,7 +247,7 @@ body {
 
 img { max-width: 100%; display: block; }
 a { color: inherit; text-decoration: none; }
-::selection { background: var(--red); color: #fff; }
+::selection { background: var(--red); color: var(--on-brand); }
 
 .wrap { max-width: var(--max); margin: 0 auto; padding: 0 24px; }
 
@@ -182,9 +263,9 @@ body::before {
   inset: 0;
   z-index: -2;
   background:
-    radial-gradient(900px 520px at 82% -12%, rgba(226,58,37,0.20), transparent 62%),
-    radial-gradient(760px 460px at -8% 8%,  rgba(247,149,33,0.10), transparent 60%),
-    radial-gradient(900px 700px at 50% 118%, rgba(184,26,16,0.14), transparent 65%);
+    radial-gradient(900px 520px at 82% -12%, var(--glow-1), transparent 62%),
+    radial-gradient(760px 460px at -8% 8%,  var(--glow-2), transparent 60%),
+    radial-gradient(900px 700px at 50% 118%, var(--glow-3), transparent 65%);
 }
 body::after {
   content: "";
@@ -194,8 +275,8 @@ body::after {
   pointer-events: none;
   opacity: 0.35;
   background-image:
-    linear-gradient(rgba(255,255,255,0.028) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.028) 1px, transparent 1px);
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
   background-size: 62px 62px;
   mask-image: radial-gradient(circle at 50% 0%, #000 0%, transparent 72%);
   -webkit-mask-image: radial-gradient(circle at 50% 0%, #000 0%, transparent 72%);
@@ -211,7 +292,7 @@ header.site {
   transition: background .3s var(--ease), border-color .3s var(--ease), backdrop-filter .3s;
 }
 header.site.scrolled {
-  background: rgba(8,8,13,0.82);
+  background: var(--header-bg);
   backdrop-filter: blur(14px) saturate(140%);
   -webkit-backdrop-filter: blur(14px) saturate(140%);
   border-bottom-color: var(--line);
@@ -258,7 +339,7 @@ nav.primary a {
   border-radius: 8px;
   transition: color .2s, background .2s;
 }
-nav.primary a:hover { color: var(--ink); background: rgba(255,255,255,0.05); }
+nav.primary a:hover { color: var(--ink); background: var(--tint); }
 nav.primary a[aria-current="page"] { color: var(--ink); }
 nav.primary a[aria-current="page"]::after {
   content: "";
@@ -268,6 +349,34 @@ nav.primary a[aria-current="page"]::after {
   border-radius: 2px;
   background: var(--grad);
 }
+
+/* Theme toggle — the light/dark switch is a manual choice, never automatic. */
+.theme-toggle {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  margin-left: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--line-2);
+  background: var(--tint-soft);
+  color: var(--ink-dim);
+  cursor: pointer;
+  transition: color .22s var(--ease), border-color .22s var(--ease), background .22s var(--ease);
+}
+.theme-toggle:hover { color: var(--ink); border-color: var(--red); background: var(--tint); }
+.theme-toggle:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+.theme-toggle svg { display: block; }
+/* Show the icon for the theme the button switches TO. */
+.theme-toggle .i-sun { display: none; }
+:root[data-theme="dark"] .theme-toggle .i-moon { display: none; }
+:root[data-theme="dark"] .theme-toggle .i-sun  { display: block; }
+
+/* Per-theme logo artwork — the on-dark mark is unreadable on white and vice versa. */
+.logo-d { display: none; }
+:root[data-theme="dark"] .logo-l { display: none; }
+:root[data-theme="dark"] .logo-d { display: block; }
 
 .nav-cta { display: flex; align-items: center; gap: 10px; }
 .nav-cta .btn { white-space: nowrap; }
@@ -285,7 +394,20 @@ nav.primary a[aria-current="page"]::after {
 
 @media (max-width: 1180px) { .brand .brand-txt { display: none; } }
 
-@media (max-width: 860px) {
+/* The theme toggle adds a fourth item to the nav row, which runs the header out
+   of width before the mobile breakpoint takes over. Tighten the spacing through
+   that band rather than dropping the toggle — it has to stay reachable. */
+@media (max-width: 1080px) {
+  .nav-inner { gap: 10px; }
+  nav.primary { font-size: 0.84rem; }
+  nav.primary a { padding: 7px 8px; }
+  .btn.sm { padding: 8px 12px; font-size: 0.82rem; }
+  .theme-toggle { margin-left: 0; width: 34px; height: 34px; }
+}
+
+/* Raised from 860px: the theme toggle needs room, and the CTA pair no longer
+   fits alongside it in the high 800s. */
+@media (max-width: 920px) {
   .hamburger { display: block; }
   .nav-cta { display: none; }
   nav.primary {
@@ -296,7 +418,7 @@ nav.primary a[aria-current="page"]::after {
     align-items: stretch;
     gap: 2px;
     padding: 12px 18px 18px;
-    background: rgba(8,8,13,0.97);
+    background: var(--header-bg-solid);
     backdrop-filter: blur(14px);
     border-bottom: 1px solid var(--line);
   }
@@ -328,7 +450,7 @@ nav.primary a[aria-current="page"]::after {
 }
 .btn.primary {
   background: var(--grad);
-  color: #fff;
+  color: var(--on-brand);
   box-shadow: 0 6px 22px -10px rgba(226,58,37,0.9);
 }
 .btn.primary:hover {
@@ -338,7 +460,7 @@ nav.primary a[aria-current="page"]::after {
 .btn.ghost {
   border-color: var(--line-2);
   color: var(--ink);
-  background: rgba(255,255,255,0.03);
+  background: var(--tint-soft);
 }
 .btn.ghost:hover {
   border-color: rgba(226,58,37,0.6);
@@ -413,7 +535,7 @@ nav.primary a[aria-current="page"]::after {
   padding: 7px 15px 7px 11px;
   border: 1px solid var(--line-2);
   border-radius: 100px;
-  background: rgba(255,255,255,0.035);
+  background: var(--tint);
   font-size: 0.79rem;
   letter-spacing: 0.03em;
   color: var(--ink-dim);
@@ -500,7 +622,7 @@ nav.primary a[aria-current="page"]::after {
 /* ---------- Sections ---------- */
 section { padding: 82px 0; position: relative; }
 section.tight { padding: 46px 0; }
-section.alt { background: linear-gradient(180deg, transparent, rgba(255,255,255,0.022), transparent); }
+section.alt { background: linear-gradient(180deg, transparent, var(--tint-soft), transparent); }
 
 .section-head { max-width: 76ch; margin-bottom: 40px; }
 .section-head .kicker {
@@ -541,7 +663,7 @@ section.alt { background: linear-gradient(180deg, transparent, rgba(255,255,255,
 .card:hover {
   transform: translateY(-4px);
   border-color: rgba(226,58,37,0.42);
-  box-shadow: 0 18px 40px -22px rgba(0,0,0,0.9);
+  box-shadow: var(--shadow-card);
 }
 
 .grid-2 { display: grid; grid-template-columns: repeat(2,1fr); gap: 20px; }
@@ -595,7 +717,7 @@ section.alt { background: linear-gradient(180deg, transparent, rgba(255,255,255,
 .city-strip { display: flex; flex-wrap: wrap; gap: 11px; }
 .city-pill {
   border: 1px solid var(--line);
-  background: rgba(255,255,255,0.03);
+  background: var(--tint-soft);
   border-radius: 100px;
   padding: 10px 18px;
   font-size: 0.89rem;
@@ -640,7 +762,7 @@ table.rates th, table.rates td {
   border-bottom: 1px solid var(--line);
 }
 table.rates th {
-  background: rgba(255,255,255,0.045);
+  background: var(--tint-strong);
   font-size: 0.73rem;
   letter-spacing: 0.13em;
   text-transform: uppercase;
@@ -649,7 +771,7 @@ table.rates th {
 }
 table.rates tr:last-child td { border-bottom: none; }
 table.rates tbody tr { transition: background .2s; }
-table.rates tbody tr:hover { background: rgba(255,255,255,0.028); }
+table.rates tbody tr:hover { background: var(--tint-soft); }
 .rates-wrap { overflow-x: auto; border-radius: var(--radius); }
 
 /* ---------- Tier cards ---------- */
@@ -670,7 +792,7 @@ table.rates tbody tr:hover { background: rgba(255,255,255,0.028); }
   position: absolute;
   top: -11px; left: 28px;
   background: var(--grad);
-  color: #fff;
+  color: var(--on-brand);
   font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.13em;
@@ -712,7 +834,7 @@ table.rates tbody tr:hover { background: rgba(255,255,255,0.028); }
   align-items: center;
   gap: 12px;
   border: 1px solid var(--line);
-  background: rgba(255,255,255,0.03);
+  background: var(--tint-soft);
   border-radius: 12px;
   padding: 15px 24px;
   font-size: 0.88rem;
@@ -727,9 +849,9 @@ table.rates tbody tr:hover { background: rgba(255,255,255,0.028); }
   display: grid;
   place-items: center;
   border-radius: 8px;
-  background: linear-gradient(135deg, #1b2f52, #0f1c33);
-  border: 1px solid rgba(255,255,255,0.12);
-  color: #dfe6f2;
+  background: var(--tile-bg);
+  border: 1px solid var(--line-2);
+  color: var(--tile-ink);
   font-weight: 800;
   font-size: 0.9rem;
 }
@@ -783,7 +905,7 @@ a.partner:hover .visit { color: var(--gold-bright); }
   padding: 13px 17px;
   border-radius: 11px;
   border: 1px solid var(--line-2);
-  background: rgba(0,0,0,0.35);
+  background: var(--field-bg);
   color: var(--ink);
   font-size: 0.95rem;
   font-family: inherit;
@@ -808,7 +930,7 @@ input, select, textarea {
   padding: 12px 15px;
   border-radius: 11px;
   border: 1px solid var(--line-2);
-  background: rgba(0,0,0,0.3);
+  background: var(--field-bg);
   color: var(--ink);
   font-family: inherit;
   font-size: 0.95rem;
@@ -833,7 +955,7 @@ select option { background: var(--surface); color: var(--ink); }
 .facts .k, .facts .v { padding: 14px 20px; border-bottom: 1px solid var(--line); font-size: 0.93rem; }
 .facts .k {
   color: var(--ink-faint);
-  background: rgba(255,255,255,0.028);
+  background: var(--tint-soft);
   font-weight: 600;
 }
 .facts .row:last-child .k, .facts .row:last-child .v { border-bottom: none; }
@@ -857,7 +979,7 @@ select option { background: var(--surface); color: var(--ink); }
   place-items: center;
   font-weight: 700;
   font-size: 1.25rem;
-  color: #fff;
+  color: var(--on-brand);
   margin-bottom: 16px;
 }
 .leader-card h3 { margin: 0 0 4px; font-size: 1.08rem; }
@@ -894,7 +1016,7 @@ select option { background: var(--surface); color: var(--ink); }
 footer.site {
   border-top: 1px solid var(--line);
   padding: 62px 0 30px;
-  background: linear-gradient(180deg, transparent, rgba(0,0,0,0.5));
+  background: linear-gradient(180deg, transparent, var(--footer-wash));
 }
 .footer-brand { margin-bottom: 38px; }
 .footer-brand img { height: 40px; width: auto; }
@@ -999,7 +1121,7 @@ footer.site {
   border-radius: var(--radius);
   overflow: hidden;
   background: var(--surface);
-  box-shadow: 0 24px 60px -34px rgba(0,0,0,0.9);
+  box-shadow: var(--shadow-media);
 }
 .media-frame img { width: 100%; height: auto; display: block; }
 /* Credit line for a licensed photograph. GODL-India and CC BY both require the

@@ -48,19 +48,75 @@ function init(renderer) {
   const camera = new THREE.PerspectiveCamera(40, 1, 0.5, 3000);
   const camTarget = new THREE.Vector3(0, 2, 0);
 
-  scene.add(new THREE.AmbientLight(0xeef4ff, 0.6));
-  const key = new THREE.DirectionalLight(0xffffff, 2.2);
+  /* ----------------------------------------------------------- palettes
+     The canvas is transparent, so the page background is the room's backdrop.
+     On white that inverts every assumption the dark scene was lit for: the
+     orange wireframe disappears, the grid vanishes, and the rim light reads as
+     grime. Each theme therefore carries its own lighting rig and colours. */
+  const PALETTES = {
+    dark: {
+      ambient: [0xeef4ff, 0.6],
+      key:     [0xffffff, 2.2],
+      rim:     [0xff6a45, 1.6],
+      hemi:    [0x9fb6ff, 0x140a08, 0.55],
+      exposure: 1.05,
+      wire:   0xff5334,
+      floor:  0x0a0c12,
+      carpet: 0x3a0d08,
+      truss:  0x565f70,
+      person: 0x090c14,
+      lamp:   0xffd9a0,
+      grid:   [0x2a3346, 0x161c28],
+      jig:    [0xe23a25, 0x39435e],
+      outline: 0x000000, outlineOpacity: 0,
+      env:    ["#0b101c", "#7d93b6", "#cdd8ea", "#40485c", "#06070b"],
+      banner: { bg: "#0e0e16", edge: "#d8241a", title: "#f3f5f9", sub: "#f79521" }
+    },
+    light: {
+      ambient: [0xffffff, 0.9],
+      key:     [0xffffff, 2.0],
+      rim:     [0xff7a55, 0.85],
+      hemi:    [0xdfe8ff, 0xc7ccd6, 0.7],
+      exposure: 1.0,
+      wire:   0xc21f10,
+      floor:  0xe7eaf1,
+      /* An event red that grounds the aircraft against the near-white floor —
+         a pale carpet left the plane looking like it floated. Kept deep rather
+         than bright so it does not flood the frame at the closing camera; the HUD
+         carries its own scrim for the rest. */
+      carpet: 0x931b12,
+      truss:  0x99a2b3,
+      person: 0x424a61,
+      lamp:   0xffcf8c,
+      grid:   [0xa4aec2, 0xcdd4e0],
+      jig:    [0xd02a16, 0xa9b3c6],
+      /* A graphite edge line traced over the finished hull. The white airframe
+         washes into the white page otherwise; this defines it without tinting the
+         skin grey. Off in dark mode, where the hull already reads. */
+      outline: 0x2b3140, outlineOpacity: 0.55,
+      env:    ["#eaf0fa", "#cdd8ea", "#ffffff", "#c3cbd8", "#aeb6c4"],
+      banner: { bg: "#ffffff", edge: "#d02a16", title: "#14161d", sub: "#b96c07" }
+    }
+  };
+  const themeName = () =>
+    document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+  let pal = PALETTES[themeName()];
+
+  const ambient = new THREE.AmbientLight(pal.ambient[0], pal.ambient[1]);
+  scene.add(ambient);
+  const key = new THREE.DirectionalLight(pal.key[0], pal.key[1]);
   key.position.set(70, 110, 80); scene.add(key);
-  const rim = new THREE.DirectionalLight(0xff6a45, 1.6);
+  const rim = new THREE.DirectionalLight(pal.rim[0], pal.rim[1]);
   rim.position.set(-80, 34, -70); scene.add(rim);
-  scene.add(new THREE.HemisphereLight(0x9fb6ff, 0x140a08, 0.55));
+  const hemi = new THREE.HemisphereLight(pal.hemi[0], pal.hemi[1], pal.hemi[2]);
+  scene.add(hemi);
 
   /* ------------------------------------------------------------ materials */
   const fadeMats = [];
   const track = m => { fadeMats.push(m); return m; };
 
   const wireMat = track(new THREE.MeshBasicMaterial({
-    color: 0xff5334, wireframe: true, transparent: true, opacity: 0, depthWrite: false
+    color: pal.wire, wireframe: true, transparent: true, opacity: 0, depthWrite: false
   }));
   const solidMat = (color, metal, rough) => track(new THREE.MeshStandardMaterial({
     color, metalness: metal, roughness: rough, transparent: true, opacity: 0,
@@ -78,16 +134,16 @@ function init(renderer) {
   /* An environment map, without which metalness renders as flat chalk. Generated
      here rather than loaded, so nothing extra ships: a vertical sky/floor gradient
      plus two soft lamps to give the panels a specular highlight to catch. */
-  (function buildEnvironment() {
+  function buildEnvironment() {
     const c = document.createElement("canvas");
     c.width = 512; c.height = 256;
     const x = c.getContext("2d");
     const grad = x.createLinearGradient(0, 0, 0, 256);
-    grad.addColorStop(0.00, "#0b101c");
-    grad.addColorStop(0.38, "#7d93b6");
-    grad.addColorStop(0.50, "#cdd8ea");
-    grad.addColorStop(0.58, "#40485c");
-    grad.addColorStop(1.00, "#06070b");
+    grad.addColorStop(0.00, pal.env[0]);
+    grad.addColorStop(0.38, pal.env[1]);
+    grad.addColorStop(0.50, pal.env[2]);
+    grad.addColorStop(0.58, pal.env[3]);
+    grad.addColorStop(1.00, pal.env[4]);
     x.fillStyle = grad; x.fillRect(0, 0, 512, 256);
     for (const [cx, cy, r, col] of [[132, 74, 66, "rgba(255,255,255,0.95)"],
                                     [372, 96, 52, "rgba(255,158,96,0.75)"]]) {
@@ -99,9 +155,11 @@ function init(renderer) {
     tex.mapping = THREE.EquirectangularReflectionMapping;
     tex.colorSpace = THREE.SRGBColorSpace;
     const pmrem = new THREE.PMREMGenerator(renderer);
+    if (scene.environment) scene.environment.dispose();
     scene.environment = pmrem.fromEquirectangular(tex).texture;
     pmrem.dispose(); tex.dispose();
-  })();
+  }
+  buildEnvironment();
 
   /* --------------------------------------------------------- geometry kit */
   function lathe(profile, phiStart, phiLength, segs = 44) {
@@ -413,8 +471,14 @@ function init(renderer) {
      the panel outlines (EdgesGeometry) left it looking too sparse. This reuses the
      baked geometry rather than building a second one, so it costs no extra memory. */
   const edgeMat = track(new THREE.MeshBasicMaterial({
-    color: 0xff5334, wireframe: true, transparent: true, opacity: 0, depthWrite: false
+    color: pal.wire, wireframe: true, transparent: true, opacity: 0, depthWrite: false
   }));
+  /* Feature-edge outline drawn over the resolved hull (silhouette, panel seams,
+     window and door cuts, control-surface breaks). Fades in with the solid skin
+     and is held on only in light mode — see the palette's outlineOpacity. */
+  const outlineMat = new THREE.LineBasicMaterial({
+    color: pal.outline, transparent: true, opacity: 0, depthWrite: false
+  });
 
   /* Cheatlines are painted by height in the shader rather than with a texture:
      the model's UVs are unknown, and a band in object space follows the real hull
@@ -516,6 +580,7 @@ function init(renderer) {
         const holder = bin(classify(g.boundingBox));
         holder.add(new THREE.Mesh(g, dark ? hullDark : hullMat));
         holder.add(new THREE.Mesh(g, edgeMat));
+        holder.add(new THREE.LineSegments(new THREE.EdgesGeometry(g, 24), outlineMat));
       }
     }
 
@@ -598,10 +663,10 @@ function init(renderer) {
   const stand = new THREE.Group();
   expo.add(stand);
 
-  const floorMat  = solidMat(0x0a0c12, 0.1, 0.9);
-  const carpetMat = solidMat(0x3a0d08, 0.05, 0.9);
-  const trussMat  = solidMat(0x565f70, 0.8, 0.4);
-  const lampMat   = track(new THREE.MeshBasicMaterial({ color: 0xffd9a0, transparent: true, opacity: 0 }));
+  const floorMat  = solidMat(pal.floor, 0.1, 0.9);
+  const carpetMat = solidMat(pal.carpet, 0.05, 0.9);
+  const trussMat  = solidMat(pal.truss, 0.8, 0.4);
+  const lampMat   = track(new THREE.MeshBasicMaterial({ color: pal.lamp, transparent: true, opacity: 0 }));
   /* Fake volumetric beam. A flat additive cone stacks with every other cone and
      saturates to white, so the falloff is baked into a gradient: bright at the
      lamp, gone by the floor. */
@@ -630,7 +695,7 @@ function init(renderer) {
   carpet.rotation.x = -Math.PI / 2; carpet.position.set(0, FLOOR_Y, 18);
   expo.add(carpet);
 
-  const grid = new THREE.GridHelper(700, 70, 0x2a3346, 0x161c28);
+  const grid = new THREE.GridHelper(700, 70, pal.grid[0], pal.grid[1]);
   grid.position.y = FLOOR_Y - 0.05;
   grid.material.transparent = true; grid.material.opacity = 0;
   track(grid.material);
@@ -663,13 +728,13 @@ function init(renderer) {
   bc.width = 2048; bc.height = 384;
   const bx = bc.getContext("2d");
   function paintBanner() {
-    bx.fillStyle = "#0e0e16"; bx.fillRect(0, 0, 2048, 384);
-    bx.strokeStyle = "#d8241a"; bx.lineWidth = 8; bx.strokeRect(4, 4, 2040, 376);
+    bx.fillStyle = pal.banner.bg; bx.fillRect(0, 0, 2048, 384);
+    bx.strokeStyle = pal.banner.edge; bx.lineWidth = 8; bx.strokeRect(4, 4, 2040, 376);
     bx.textAlign = "center"; bx.textBaseline = "middle";
-    bx.fillStyle = "#f3f5f9";
+    bx.fillStyle = pal.banner.title;
     bx.font = BANNER_TITLE;
     bx.fillText("GLOBAL EXPO EVENTS", 1024, 166);
-    bx.fillStyle = "#f79521";
+    bx.fillStyle = pal.banner.sub;
     bx.font = BANNER_SUB;
     bx.fillText("AIRCRAFT MANUFACTURING · SEVEN CITIES · TWENTY-ONE DAYS", 1024, 280);
   }
@@ -704,7 +769,7 @@ function init(renderer) {
 
   /* ---------------------------------------------------------------- crowd */
   const PEOPLE = 58, FOREGROUND = 11;
-  const personMat = solidMat(0x090c14, 0.0, 0.95);
+  const personMat = solidMat(pal.person, 0.0, 0.95);
   const bodyGeo = new THREE.CapsuleGeometry(0.62, 2.0, 4, 10); bodyGeo.translate(0, 1.62, 0);
   const headGeo = new THREE.SphereGeometry(0.5, 12, 10);       headGeo.translate(0, 3.55, 0);
   const bodies = new THREE.InstancedMesh(bodyGeo, personMat, PEOPLE + FOREGROUND);
@@ -731,7 +796,7 @@ function init(renderer) {
     crowd.push({ x, z, rot: Math.PI + (rnd() - 0.5) * 0.9, h: 0.95 + rnd() * 0.3, d: 0.55 + rnd() * 0.45 });
   }
 
-  const jig = new THREE.GridHelper(150, 15, 0xe23a25, 0x39435e);
+  const jig = new THREE.GridHelper(150, 15, pal.jig[0], pal.jig[1]);
   jig.position.y = FLOOR_Y + 0.4;
   jig.material.transparent = true; jig.material.opacity = 0;
   track(jig.material);
@@ -854,6 +919,7 @@ function init(renderer) {
       edgeMat.opacity = seg(p, 0.03, 0.10) * (1 - ease(seg(p, 0.54, 0.70))) * 0.85;
       hullMat.opacity = solidM;
       hullDark.opacity = solidM;
+      outlineMat.opacity = solidM * pal.outlineOpacity;
       STRIPE.value = ease(seg(p, 0.66, 0.80));
       for (const m of modelDecals) m.opacity = STRIPE.value;
     }
@@ -965,6 +1031,55 @@ function init(renderer) {
 
   /* --------------------------------------------------------------- scroll */
   let progress = 0, needsRender = true, onScreen = true;
+
+  /* --------------------------------------------------- theme change
+     GridHelper bakes its two colours into a vertex-colour attribute, so a grid
+     cannot be recoloured by touching its material — the attribute is rewritten
+     in place instead, in the same order the constructor filled it (four vertices
+     per division, the centre line taking the first colour). */
+  function recolorGrid(helper, divisions, c1, c2) {
+    const a = helper.geometry.attributes.color;
+    const centre = divisions / 2;
+    const one = new THREE.Color(c1), two = new THREE.Color(c2);
+    for (let i = 0, j = 0; i <= divisions; i++) {
+      const c = i === centre ? one : two;
+      for (let v = 0; v < 4; v++) { c.toArray(a.array, j); j += 3; }
+    }
+    a.needsUpdate = true;
+  }
+
+  function applyPalette() {
+    const next = PALETTES[themeName()];
+    if (next === pal) return;
+    pal = next;
+
+    ambient.color.set(pal.ambient[0]); ambient.intensity = pal.ambient[1];
+    key.color.set(pal.key[0]);         key.intensity     = pal.key[1];
+    rim.color.set(pal.rim[0]);         rim.intensity     = pal.rim[1];
+    hemi.color.set(pal.hemi[0]); hemi.groundColor.set(pal.hemi[1]);
+    hemi.intensity = pal.hemi[2];
+    renderer.toneMappingExposure = pal.exposure;
+
+    wireMat.color.set(pal.wire);
+    edgeMat.color.set(pal.wire);
+    floorMat.color.set(pal.floor);
+    carpetMat.color.set(pal.carpet);
+    trussMat.color.set(pal.truss);
+    personMat.color.set(pal.person);
+    lampMat.color.set(pal.lamp);
+
+    recolorGrid(grid, 70, pal.grid[0], pal.grid[1]);
+    recolorGrid(jig, 15, pal.jig[0], pal.jig[1]);
+    outlineMat.color.set(pal.outline);
+
+    buildEnvironment();
+    paintBanner();
+    bannerTex.needsUpdate = true;
+    update(progress);   // recompute opacities (outline etc.) for the new palette
+    needsRender = true;
+  }
+
+  addEventListener("themechange", applyPalette);
 
   const trackEl = section.querySelector(".build3d-track") || section;
   function readScroll() {

@@ -13,9 +13,9 @@
   height: 100vh;
   overflow: hidden;
   background:
-    radial-gradient(1100px 620px at 70% 8%, rgba(226,58,37,0.16), transparent 62%),
-    radial-gradient(900px 560px at 12% 82%, rgba(247,149,33,0.10), transparent 60%),
-    linear-gradient(180deg, var(--bg), #0a0a11 60%, var(--bg));
+    radial-gradient(1100px 620px at 70% 8%, var(--stage-glow-1), transparent 62%),
+    radial-gradient(900px 560px at 12% 82%, var(--stage-glow-2), transparent 60%),
+    linear-gradient(180deg, var(--bg), var(--stage-mid) 60%, var(--bg));
 }
 
 .build3d-sticky canvas {
@@ -67,7 +67,7 @@
   line-height: 1.1;
   letter-spacing: -0.028em;
   margin: 0;
-  text-shadow: 0 2px 30px rgba(0,0,0,0.7);
+  text-shadow: var(--stage-text-shadow);
 }
 
 .build3d-hud { max-width: 46ch; }
@@ -84,13 +84,13 @@
   margin: 0 0 16px;
   color: var(--ink-dim);
   font-size: 0.96rem;
-  text-shadow: 0 2px 20px rgba(0,0,0,0.8);
+  text-shadow: var(--stage-text-shadow);
   min-height: 2.9em;
 }
 .build3d-progress {
   height: 2px;
   width: min(420px, 60vw);
-  background: rgba(255,255,255,0.14);
+  background: var(--line-2);
   border-radius: 2px;
   overflow: hidden;
 }

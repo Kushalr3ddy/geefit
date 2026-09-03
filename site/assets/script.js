@@ -1,6 +1,38 @@
 document.addEventListener("DOMContentLoaded", () => {
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+  /* ---- theme toggle ----
+     Light is the default; dark is only ever on because the visitor asked for it.
+     The stored value is applied by an inline script in <head> so the first paint
+     is already correct — this only wires the button and keeps the two in sync. */
+  const THEME_KEY = "geefit-theme";
+  const themeBtn = document.querySelector(".theme-toggle");
+  const readTheme = () =>
+    document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+
+  const applyTheme = theme => {
+    const dark = theme === "dark";
+    if (dark) document.documentElement.setAttribute("data-theme", "dark");
+    else document.documentElement.removeAttribute("data-theme");
+    if (themeBtn) {
+      const next = dark ? "light" : "dark";
+      themeBtn.setAttribute("aria-pressed", String(dark));
+      themeBtn.setAttribute("aria-label", "Switch to " + next + " theme");
+      themeBtn.setAttribute("title", "Switch to " + next + " theme");
+    }
+    // The 3D scene paints its own colours and has to repaint on a theme change.
+    window.dispatchEvent(new CustomEvent("themechange", { detail: { theme } }));
+  };
+
+  applyTheme(readTheme());
+  if (themeBtn) {
+    themeBtn.addEventListener("click", () => {
+      const next = readTheme() === "dark" ? "light" : "dark";
+      applyTheme(next);
+      try { localStorage.setItem(THEME_KEY, next); } catch (e) { /* private mode */ }
+    });
+  }
+
   /* ---- mobile nav ---- */
   const toggle = document.querySelector(".hamburger");
   const nav = document.querySelector("nav.primary");
